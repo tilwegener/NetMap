@@ -1,0 +1,53 @@
+# Non-blocking security scanning: SAST (Semgrep) + dependency audits.
+# Report-only for now — every job is continue-on-error so findings never
+# block a push. Flip that off per-job once the baseline is triaged.
+name: Security scan
+
+on:
+  push:
+    branches: [main, test]
+  pull_request:
+  schedule:
+    - cron: "0 6 * * 1" # weekly Monday sweep for new advisories
+
+permissions:
+  contents: read
+
+jobs:
+  semgrep:
+    name: Semgrep SAST
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    container:
+      image: semgrep/semgrep
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Semgrep (community rules)
+        run: semgrep scan --config auto --error --text backend frontend docker
+
+  python-deps:
+    name: Python dependency audit
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install backend dependencies and audit them
+        run: |
+          python -m pip install ./backend pip-audit
+          pip-audit
+
+  npm-deps:
+    name: npm dependency audit
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Run npm audit (production deps)
+        working-directory: frontend
+        run: npm audit --omit=dev --audit-level=high
