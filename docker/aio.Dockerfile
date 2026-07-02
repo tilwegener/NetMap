@@ -66,6 +66,7 @@ RUN pip install --no-cache-dir --upgrade pip \
 
 COPY backend/app ./app
 COPY VERSION /app/VERSION
+COPY CHANGELOG.md /app/CHANGELOG.md
 COPY --from=frontend-builder /app/dist /usr/share/nginx/html
 COPY docker/aio-nginx.conf.template /etc/netmap/aio-nginx.conf.template
 COPY docker/aio-entrypoint.sh /usr/local/bin/netmap-aio-entrypoint

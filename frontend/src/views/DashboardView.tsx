@@ -67,6 +67,7 @@ export function DashboardView({
   onSelectIconPack,
   onAddLocalIconPack,
   onRemoveLocalIconPack,
+  onOpenWhatsNew,
   versionInfo,
 }: {
   accessToken: string | null;
@@ -93,6 +94,7 @@ export function DashboardView({
   onSelectIconPack: (packId: string) => void;
   onAddLocalIconPack: (pack: IconPack) => void;
   onRemoveLocalIconPack: (packId: string) => void;
+  onOpenWhatsNew: () => void;
   versionInfo: VersionInfo | null;
 }) {
   const canWrite = user.role === "SuperAdmin" || user.role === "NetworkAdmin";
@@ -222,6 +224,7 @@ export function DashboardView({
           onAddLocalIconPack={onAddLocalIconPack}
           onRemoveLocalIconPack={onRemoveLocalIconPack}
           onSettingsChange={onSettingsChange}
+          onOpenWhatsNew={onOpenWhatsNew}
           versionInfo={versionInfo}
         />
       )}

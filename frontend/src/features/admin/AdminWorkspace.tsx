@@ -270,6 +270,7 @@ export function AdminWorkspace({
   onAddLocalIconPack,
   onRemoveLocalIconPack,
   onSettingsChange,
+  onOpenWhatsNew,
   versionInfo,
 }: {
   accessToken: string;
@@ -284,6 +285,7 @@ export function AdminWorkspace({
   onAddLocalIconPack: (pack: IconPack) => void;
   onRemoveLocalIconPack: (packId: string) => void;
   onSettingsChange: (settings: SystemSettings) => void;
+  onOpenWhatsNew: () => void;
   versionInfo: VersionInfo | null;
 }) {
   const [activeTab, setActiveTab] = useState<"system" | "users" | "security" | "notifications" | "alerts" | "groups" | "credentials" | "automation">("system");
@@ -1304,7 +1306,12 @@ export function AdminWorkspace({
             <div className="system-tab-col">
               {versionInfo && (
                 <section className="panel admin-panel">
-                  <h2 className="admin-section-title"><IconCloud size={16} />Version</h2>
+                  <div className="system-icon-header">
+                    <h2 className="admin-section-title" style={{ margin: 0 }}><IconCloud size={16} />Version</h2>
+                    <button type="button" className="nm-btn nm-btn--secondary" onClick={onOpenWhatsNew}>
+                      What&apos;s new
+                    </button>
+                  </div>
                   <dl className="admin-config-grid">
                     <dt>Installed</dt>
                     <dd>{versionInfo.channel ? `${versionInfo.channel}: ` : "v"}{versionInfo.current}</dd>

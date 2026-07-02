@@ -813,12 +813,24 @@ export type VlanSuggestion = {
   already_imported: boolean;
 };
 
+export type ChangelogSection = {
+  category: string;
+  items: string[];
+};
+
+export type ChangelogRelease = {
+  version: string;
+  sections: ChangelogSection[];
+};
+
 export type VersionInfo = {
   current: string;
   channel: string | null;
   latest: string | null;
   up_to_date: boolean;
   release_url: string;
+  current_release_url: string;
+  whats_new: ChangelogRelease[];
 };
 
 type DiagCacheEntry = {

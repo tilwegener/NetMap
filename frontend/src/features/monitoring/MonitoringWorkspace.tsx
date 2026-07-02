@@ -938,7 +938,7 @@ export function MonitoringWorkspace({
                 {canWrite && (
                   <button
                     type="button"
-                    className="nm-btn nm-btn--sm"
+                    className="nm-btn nm-btn--sm nm-btn--secondary"
                     disabled={pauseBusyId === selectedDevice.device_id || (!selectedDevice.monitoring_paused && selectedDevice.lifecycle !== "active")}
                     onClick={() => void toggleDevicePause(selectedDevice)}
                     title={

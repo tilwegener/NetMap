@@ -21,6 +21,7 @@ from app.models.device import Device
 from app.models.monitor_history import DeviceMonitorHistory
 from app.models.user import User
 from app.api.v1.monitoring import monitoring_cache_status
+from app.services.changelog import changelog_for_installed_version, changelog_release_to_dict
 from app.services.syslog.storage import count_events, get_retention_status
 
 router = APIRouter(prefix="/system", tags=["system"])
@@ -73,12 +74,21 @@ def get_version() -> dict:
     current_tuple = _version_tuple(current)
     latest_tuple = _version_tuple(latest) if latest else None
     up_to_date = latest_tuple is None or (current_tuple is not None and current_tuple >= latest_tuple)
+    whats_new = [
+        changelog_release_to_dict(release)
+        for release in changelog_for_installed_version(
+            current,
+            user_agent=f"netmap/{current}",
+        )
+    ]
     return {
         "current": current,
         "channel": installed_app_channel(),
         "latest": latest,
         "up_to_date": up_to_date,
-        "release_url": f"https://github.com/{_GITHUB_REPO}",
+        "release_url": f"https://github.com/{_GITHUB_REPO}/releases/tag/v{latest}" if latest else f"https://github.com/{_GITHUB_REPO}",
+        "current_release_url": f"https://github.com/{_GITHUB_REPO}/releases/tag/v{current}",
+        "whats_new": whats_new,
     }
 
 

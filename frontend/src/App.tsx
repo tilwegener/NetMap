@@ -20,6 +20,7 @@ import { LoginView } from "./features/auth/LoginView";
 import { ResetPasswordView } from "./features/auth/ResetPasswordView";
 import { Sidebar, AppTopbar } from "./Sidebar";
 import { DashboardView } from "./views/DashboardView";
+import { WhatsNewModal, dismissWhatsNew, shouldShowWhatsNew } from "./components/WhatsNewModal";
 
 export function App() {
   const [needsSetup, setNeedsSetup] = useState<boolean | null>(null);
@@ -44,6 +45,7 @@ export function App() {
   const [activeIconPackId, setActiveIconPackId] = useState(() => window.localStorage.getItem(iconPackStorageKey) || builtInIconPack.id);
   const [iconPackError, setIconPackError] = useState<string | null>(null);
   const [versionInfo, setVersionInfo] = useState<VersionInfo | null>(null);
+  const [showWhatsNew, setShowWhatsNew] = useState(false);
   const topologyRefreshRequestIdRef = useRef(0);
   const monitorCursorRef = useRef<string | null>(null);
   const monitorPollCountRef = useRef(0);
@@ -67,6 +69,10 @@ export function App() {
     if (!accessToken) return;
     void api.getVersion(accessToken).then(setVersionInfo).catch(() => {});
   }, [accessToken]);
+
+  useEffect(() => {
+    setShowWhatsNew(shouldShowWhatsNew(versionInfo));
+  }, [versionInfo]);
 
   useEffect(() => {
     if (!accessToken) return;
@@ -429,6 +435,17 @@ export function App() {
     }));
   }
 
+  function closeWhatsNew() {
+    if (versionInfo?.current) {
+      dismissWhatsNew(versionInfo.current);
+    }
+    setShowWhatsNew(false);
+  }
+
+  function openWhatsNew() {
+    setShowWhatsNew(true);
+  }
+
   useEffect(() => {
     if (screen !== "dashboard" || !user) {
       if (window.location.pathname !== "/") {
@@ -589,8 +606,12 @@ export function App() {
                 setActiveIconPackId(builtInIconPack.id);
               }
             }}
+            onOpenWhatsNew={openWhatsNew}
             versionInfo={versionInfo}
           />
+          {showWhatsNew && versionInfo && (
+            <WhatsNewModal versionInfo={versionInfo} onClose={closeWhatsNew} />
+          )}
         </section>
         </TopbarNoteCtx.Provider>
       </section>

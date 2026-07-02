@@ -2,9 +2,58 @@
 
 ## Unreleased
 
+### Added
+- **Response-time (RTT) threshold alert rules** — Admin → Alerts now offers a "Response time above threshold" trigger with a configurable millisecond threshold (per device or fleet-wide). The background monitor fires the rule when a device's probe RTT exceeds the threshold, reusing the existing notification channels and cooldown; a persistent high-latency condition re-alerts once per cooldown period. Migration `0036_alert_rule_threshold_ms` adds `alert_rules.threshold_ms`.
+- **Pause monitoring per device** — devices can be paused from the device form or the Pause/Resume button in device details. Paused devices are skipped by live/background probes (no false offline alerts), show a gray "paused" status in Monitoring (with a Paused filter and fleet paused count), and stay in inventory/topology. Migration `0037_device_monitoring_fields`.
+- **Device lifecycle states** — devices carry a lifecycle of planned / active / retired / ignored. Only active devices are monitored; the rest render as paused in Monitoring and show a lifecycle badge in device details.
+- **HTTP/HTTPS service checks** — Monitoring service checks now support `HTTP` and `HTTPS` types with an optional request path (e.g. `/health`). A response below 500 counts as up (401/403/404 mean the service answered); TLS is not verified because LAN devices routinely use self-signed certificates. Migration `0038_service_check_http_path`.
+- **Flapping detection** — devices whose status changes 4+ times within an hour get a "flapping" badge in the Monitoring table, and a new "Device is flapping" alert rule trigger fires through the normal notification channels with per-rule cooldown.
+- **Notification delivery history** — every alert notification attempt is recorded (rule, target, sent/failed, provider error summary) and shown in Admin → Alerts → Delivery history. Records are pruned after 30 days. Migration `0039_notification_deliveries`.
+- **Generic webhook notification method** — Admin → Notifications now offers "Generic webhook": NetMap POSTs `{"title": "NetMap", "message": …}` as JSON to any HTTP(S) endpoint, with an optional bearer token. Respects the private-target egress blocking setting.
+- **IPAM next-available-IP** — the Reserve IP dialog can fill in the next free address of the selected subnet with one click, skipping used IPs, the gateway, and the DHCP pool.
+- **IP reservation expiry dates** — reservations accept an optional expiry date; expired reservations are flagged in the reservations table and a "Clear expired" action removes them in bulk. Migration `0040_ip_reservation_expiry`.
+- **Saved security searches** — the Security workspace can save the current filter set under a name and re-apply or delete it from a dropdown. Saved per user. Migration `0041_saved_security_searches`.
+- **What's new popup** — after login, authenticated users see a once-per-installed-version popup summarising the changelog for the version they're running. It does not prompt when a newer tag is merely available; Admin → Version can reopen it manually. GitHub release notes for `v*` tags are generated from the same `CHANGELOG.md` in CI.
+- **Custom device types** — the device form's type picker gained a "Custom…" option with a free-text name (e.g. iDRAC, UPS, PDU). Custom types display consistently in Inventory, Topology, filters, and exports, and fall back to the default device icon.
+- **Interactive monitoring summary cards** — the Monitored/Online/Offline cards in Monitoring now click to apply the matching status filter (click again to clear).
+- **GitHub Actions security scanning** — a new report-only `security-scan.yml` workflow runs Semgrep SAST plus `pip-audit` and `npm audit` on pushes, pull requests, and a weekly schedule. All jobs are non-blocking until the baseline is triaged.
+
 ### Fixed
+- **Scheduled discovery IP conflicts are review-only** — when a scheduled scan finds a MAC-matched device at an IP that already belongs to a *different* inventory device, the move is no longer misattributed as a field change on the occupying device. It now creates an `ip_change` observation against the MAC-matched device for manual review, and the IP is never auto-applied onto an occupied address.
 - **Topology link form** endpoint pickers now render above the modal scroll layer with an opaque dropdown surface, preventing the source/target menu from being clipped, hidden, or see-through while creating or editing links.
 - **Topology links dropdown** now uses fixed source/target/type columns so long link labels no longer shift row spacing.
+- **Device pause controls** now update Topology/Inventory state consistently, show paused devices with neutral gray styling instead of red, and expose Paused in the Inventory status filter.
+- **Monitoring drilldown pause control** now lets writable users pause/resume an individual active device from the Monitoring popup, while lifecycle-paused devices explain why they cannot be resumed there.
+- **IPAM next-free reservation** is now visible from subnet rows and the subnet detail modal, not only inside the generic reserve dialog.
+- **IPAM reserve and next-free actions** now use the secondary button treatment from the unified UI styles; the subnet popup keeps "Reserve next IP" in the top bar beside close.
+- **Pause controls** in device details and the monitoring popup now use the shared secondary button treatment.
+## [1.3.1] - 2026-06-28
+
+### Security
+- **Replaced `python-jose` with `PyJWT`** to remove the unmaintained `ecdsa` dependency.
+- **Pinned `cryptography>=48.0.1`**, **`starlette>=1.3.1`**, upgraded DOMPurify, and upgraded Vite/plugin-react to address dependency advisories.
+- **Password changes and resets now revoke active sessions**, invalidate sibling reset tokens, and require `APP_URL` before sending reset links.
+- **RBAC checks tightened** for alert management, IPAM mutations, syslog WebSockets, and configurable `security_view` access.
+- **Network tools hardened** against DNS rebinding; `X-Forwarded-For` parsing now uses the rightmost forwarded address.
+- **Discovery/SNMP safeguards added** with manual scheduled-discovery single-flight enforcement and an SNMP walk wall-clock deadline.
+- **Syslog TCP connection handling fixed** to avoid tracking unbounded per-connection thread references.
+
+### Added
+- **Overview favourites drilldown:** clicking a favourite device now opens a monitoring detail popup directly on Overview.
+- **Monitoring favourites filter:** a star toggle filters the Monitoring device table to favourites only.
+- **TCP/UDP service checks:** monitored port targets can now be TCP or UDP.
+- **TCP/UDP tools port check:** the Tools port checker now supports both TCP and UDP.
+- **Radial group layout:** topology groups can be arranged with a radial group layout option.
+
+### Changed
+- **Inventory default page size** now defaults to 25 rows and migrates old auto-saved 10-row preferences to 25 once, while preserving later manual choices.
+- **Port-check naming** now uses generic "Port check" labels and API action names instead of TCP-only wording.
+- **Upgrade docs** now `cd /opt/netmap` before pull, recreate, and backup commands.
+
+### Fixed
+- **Primary button styling** no longer gets overridden in modal headers.
+- **Overview favourites popup** keeps users on Overview instead of navigating to Monitoring.
+- **Alert monitor service checks** now honour the configured TCP/UDP check type.
 
 ## [1.3.0] - 2026-06-18
 

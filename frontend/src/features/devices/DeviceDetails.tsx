@@ -164,7 +164,7 @@ export function DeviceDetails({
               {canWrite && !disabled && (
                 <button
                   type="button"
-                  className="admin-action-btn"
+                  className="nm-btn nm-btn--sm nm-btn--secondary"
                   title={device.monitoring_paused ? "Resume monitoring for this device" : "Pause monitoring for this device"}
                   onClick={() => void commitField({ monitoring_paused: !device.monitoring_paused })}
                 >
