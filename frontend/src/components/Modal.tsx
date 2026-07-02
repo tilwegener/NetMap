@@ -14,6 +14,7 @@ export function Modal({
   bodyClassName,
   children,
   footer,
+  headerActions,
   headerExtra,
   headerSubmitDisabled = false,
   headerSubmitFormId,
@@ -27,6 +28,7 @@ export function Modal({
   bodyClassName?: string;
   children: React.ReactNode;
   footer?: React.ReactNode;
+  headerActions?: React.ReactNode;
   headerExtra?: React.ReactNode;
   headerSubmitDisabled?: boolean;
   headerSubmitFormId?: string;
@@ -75,6 +77,7 @@ export function Modal({
                 {headerSubmitLabel}
               </button>
             )}
+            {headerActions}
             <button type="button" className="nm-btn nm-btn--icon modal-close-btn" onClick={onCancel} aria-label="Close">
               <X size={18} />
             </button>

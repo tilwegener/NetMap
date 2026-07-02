@@ -25,6 +25,8 @@ export type DashboardSummary = {
 export type DeviceStatus = "online" | "offline" | "warning" | "unknown" | "disabled";
 export type DeviceIcon = string;
 
+export type DeviceLifecycle = "planned" | "active" | "retired" | "ignored";
+
 export type Device = {
   id: number;
   display_name: string | null;
@@ -35,6 +37,8 @@ export type Device = {
   os: string | null;
   device_type: string | null;
   status: DeviceStatus;
+  lifecycle: DeviceLifecycle;
+  monitoring_paused: boolean;
   monitor_status: DeviceStatus | null;
   last_monitored_at: string | null;
   is_favourite: boolean;
@@ -72,6 +76,8 @@ export type DevicePayload = {
   os: string | null;
   device_type: string | null;
   status: DeviceStatus;
+  lifecycle?: DeviceLifecycle;
+  monitoring_paused?: boolean;
   icon: DeviceIcon;
   color: string | null;
   vlan_id: string | null;
@@ -562,12 +568,12 @@ export type NotificationProfile = {
 
 export type NotificationProfilePayload = {
   name: string;
-  provider: "apprise" | "ntfy" | "telegram" | "signal" | "smtp";
+  provider: "apprise" | "ntfy" | "telegram" | "signal" | "smtp" | "webhook";
   enabled: boolean;
   config: Record<string, string>;
 };
 
-export type AlertRuleEventType = "device_offline" | "device_online" | "device_warning" | "any_status_change";
+export type AlertRuleEventType = "device_offline" | "device_online" | "device_warning" | "any_status_change" | "rtt_above" | "device_flapping";
 
 export type AlertRule = {
   id: number;
@@ -577,6 +583,7 @@ export type AlertRule = {
   device_id: number | null;
   channels: string[];
   cooldown_minutes: number;
+  threshold_ms: number | null;
   last_triggered_at: string | null;
   created_at: string;
   updated_at: string;
@@ -589,6 +596,7 @@ export type AlertRulePayload = {
   device_id: number | null;
   channels: string[];
   cooldown_minutes: number;
+  threshold_ms: number | null;
 };
 
 export type AlertEvent = {
@@ -605,9 +613,19 @@ export type PortResult = {
   target_id: number | null;
   port: number;
   label: string;
-  check_type: "tcp" | "udp";
+  check_type: string;
   open: boolean;
   status: string | null;
+};
+
+export type NotificationDelivery = {
+  id: number;
+  rule_name: string;
+  device_id: number | null;
+  target: string;
+  status: "sent" | "failed";
+  detail: string;
+  sent_at: string;
 };
 
 export type MonitorHistoryPoint = {
@@ -624,6 +642,8 @@ export type DeviceMonitorSummary = {
   hostname: string | null;
   ip_address: string;
   status: string;
+  lifecycle: DeviceLifecycle;
+  monitoring_paused: boolean;
   topology_group: string | null;
   site_id: number | null;
   site_name: string | null;
@@ -636,6 +656,7 @@ export type DeviceMonitorSummary = {
   heartbeat: string[];
   rtt_sparkline: (number | null)[];
   is_favourite: boolean;
+  flapping: boolean;
 };
 
 export type FleetSummary = {
@@ -643,16 +664,20 @@ export type FleetSummary = {
   online: number;
   offline: number;
   unknown: number;
+  paused: number;
   avg_rtt_ms: number | null;
   last_checked: string | null;
 };
+
+export type ServiceCheckType = "tcp" | "udp" | "http" | "https";
 
 export type PortTarget = {
   id: number;
   device_id: number | null;
   port: number;
   label: string;
-  check_type: "tcp" | "udp";
+  check_type: ServiceCheckType;
+  http_path: string | null;
   enabled: boolean;
   created_at: string;
 };
@@ -732,6 +757,7 @@ export type IpReservation = {
   mac_address: string | null;
   notes: string | null;
   reserved_by: string | null;
+  expires_at: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -742,6 +768,14 @@ export type IpReservationPayload = {
   label: string;
   mac_address?: string | null;
   notes?: string | null;
+  expires_at?: string | null;
+};
+
+export type SavedSecuritySearch = {
+  id: number;
+  name: string;
+  filters: Record<string, unknown>;
+  created_at: string;
 };
 
 export type DhcpLease = {
@@ -1405,6 +1439,8 @@ export const api = {
     request<Record<string, string>>(`/api/v1/alerts/rules/${id}/test`, { token, method: "POST" }),
   listAlertEvents: (token: string, deviceId?: number) =>
     request<AlertEvent[]>(`/api/v1/alerts/events${deviceId !== undefined ? `?device_id=${deviceId}` : ""}`, { token }),
+  listNotificationDeliveries: (token: string, limit = 100) =>
+    request<NotificationDelivery[]>(`/api/v1/alerts/deliveries?limit=${limit}`, { token }),
   resetUserPassword: (token: string, userId: number, newPassword: string) =>
     request<void>(`/api/v1/auth/users/${userId}/reset-password`, {
       method: "POST",
@@ -1462,7 +1498,7 @@ export const api = {
     request<DeviceAnalysis>(`/api/v1/monitoring/devices/${deviceId}/analysis`, { token }),
   listPortTargets: (token: string) =>
     request<PortTarget[]>("/api/v1/monitoring/service-checks", { token }),
-  createPortTarget: (token: string, payload: { device_id: number | null; port: number; label: string; check_type?: "tcp" | "udp"; enabled?: boolean }) =>
+  createPortTarget: (token: string, payload: { device_id: number | null; port: number; label: string; check_type?: ServiceCheckType; http_path?: string | null; enabled?: boolean }) =>
     request<PortTarget>("/api/v1/monitoring/service-checks", { method: "POST", token, body: JSON.stringify(payload) }),
   deletePortTarget: (token: string, id: number) =>
     request<void>(`/api/v1/monitoring/service-checks/${id}`, { method: "DELETE", token }),
@@ -1503,6 +1539,16 @@ export const api = {
     request<IpReservation>(`/api/v1/ipam/reservations/${id}`, { method: "PATCH", token, body: JSON.stringify(payload) }),
   deleteReservation: (token: string, id: number) =>
     request<void>(`/api/v1/ipam/reservations/${id}`, { method: "DELETE", token }),
+  deleteExpiredReservations: (token: string) =>
+    request<{ deleted: number }>("/api/v1/ipam/reservations/expired", { method: "DELETE", token }),
+  getNextAvailableIp: (token: string, subnetId: number) =>
+    request<{ ip: string }>(`/api/v1/ipam/subnets/${subnetId}/next-available`, { token }),
+  listSavedSecuritySearches: (token: string) =>
+    request<SavedSecuritySearch[]>("/api/v1/syslog/searches", { token }),
+  createSavedSecuritySearch: (token: string, name: string, filters: Record<string, unknown>) =>
+    request<SavedSecuritySearch>("/api/v1/syslog/searches", { method: "POST", token, body: JSON.stringify({ name, filters }) }),
+  deleteSavedSecuritySearch: (token: string, id: number) =>
+    request<void>(`/api/v1/syslog/searches/${id}`, { method: "DELETE", token }),
   getVersion: (token: string) => request<VersionInfo>("/api/v1/system/version", { token }),
   getSystemDiagnostics: (token: string) => request<SystemDiagnostics>("/api/v1/system/diagnostics", { token }),
   lldpScan: (token: string, deviceId: number) =>

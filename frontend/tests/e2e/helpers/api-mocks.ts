@@ -47,10 +47,18 @@ export function mockRelationship(overrides: Record<string, unknown> = {}) {
 // Sets up the auth bootstrap mocks so the app reaches the dashboard.
 // Route order matters: register before page.goto().
 export async function setupCoreMocks(page: Page) {
+  await page.route("**/api/v1/admin/settings/public", (route) =>
+    route.fulfill({
+      json: { app_name: "NetMap", idle_timeout_minutes: 15, announcement: null },
+    })
+  );
   await page.route("**/api/v1/admin/public-settings", (route) =>
     route.fulfill({
       json: { app_name: "NetMap", idle_timeout_minutes: 15, announcement: null },
     })
+  );
+  await page.route("**/api/v1/setup/status", (route) =>
+    route.fulfill({ json: { needs_setup: false } })
   );
   await page.route("**/api/v1/auth/setup-required", (route) =>
     route.fulfill({ json: { needs_setup: false } })
@@ -65,6 +73,12 @@ export async function setupCoreMocks(page: Page) {
     route.fulfill({ json: { version: "1.2.4", latest: "1.2.4", update_available: false } })
   );
   await page.route("**/api/v1/icon-packs", (route) =>
+    route.fulfill({ json: [] })
+  );
+  await page.route("**/api/v1/discovery/observations*", (route) =>
+    route.fulfill({ json: [] })
+  );
+  await page.route("**/api/v1/topology/devices/favourites", (route) =>
     route.fulfill({ json: [] })
   );
   await page.route("**/api/v1/devices/favourites", (route) =>
@@ -116,5 +130,78 @@ export async function setupInventoryMocks(
   );
   await page.route("**/api/v1/sites*", (route) =>
     route.fulfill({ json: [] })
+  );
+}
+
+export function mockMonitoringDevice(overrides: Record<string, unknown> = {}) {
+  return {
+    device_id: 1,
+    display_name: "Core Router",
+    hostname: "router-01",
+    ip_address: "192.168.1.1",
+    status: "online",
+    topology_group: "Core",
+    site_id: null,
+    site_name: null,
+    vlan_id: null,
+    last_checked: "2026-06-14T00:00:00Z",
+    uptime_24h: 1,
+    uptime_7d: 0.998,
+    avg_rtt_24h: 2.4,
+    latest_port_results: [
+      { target_id: 1, port: 443, label: "https", check_type: "tcp", open: true, status: "open" },
+    ],
+    heartbeat: Array.from({ length: 48 }, (_, i) => (i % 12 === 0 ? "warning" : "online")),
+    rtt_sparkline: Array.from({ length: 36 }, (_, i) => 2 + Math.sin(i / 4) * 0.4),
+    is_favourite: false,
+    ...overrides,
+  };
+}
+
+export async function setupMonitoringMocks(
+  page: Page,
+  devices: ReturnType<typeof mockMonitoringDevice>[] = [mockMonitoringDevice()]
+) {
+  await page.route("**/api/v1/monitoring/summary", (route) =>
+    route.fulfill({
+      json: {
+        total: devices.length,
+        online: devices.filter((d) => d.status === "online").length,
+        offline: devices.filter((d) => d.status === "offline").length,
+        unknown: devices.filter((d) => d.status === "unknown").length,
+        avg_rtt_ms: 2.4,
+        last_checked: "2026-06-14T00:00:00Z",
+      },
+    })
+  );
+  await page.route("**/api/v1/monitoring/devices", (route) =>
+    route.fulfill({ json: devices })
+  );
+  await page.route("**/api/v1/monitoring/devices?*", (route) =>
+    route.fulfill({ json: devices })
+  );
+  await page.route("**/api/v1/monitoring/service-checks", (route) =>
+    route.fulfill({ json: [] })
+  );
+  await page.route("**/api/v1/monitoring/devices/*/history?*", (route) =>
+    route.fulfill({ json: [] })
+  );
+  await page.route("**/api/v1/monitoring/devices/*/analysis", (route) =>
+    route.fulfill({
+      json: {
+        device_id: 1,
+        baseline_rtt_ms: null,
+        rtt_stddev: null,
+        rtt_p50: null,
+        rtt_p95: null,
+        current_rtt_ms: null,
+        anomaly_score: null,
+        anomaly_level: "insufficient_data",
+        trend: "insufficient_data",
+        trend_pct: null,
+        flap_count_24h: 0,
+        longest_outage_minutes: null,
+      },
+    })
   );
 }

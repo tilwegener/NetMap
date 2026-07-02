@@ -1,20 +1,27 @@
 import React from "react";
 
-export function DashStat({ label, value, sub, icon, accent }: {
+export function DashStat({ label, value, sub, icon, accent, onClick, active }: {
   label: string;
   value: number | string;
   sub: string;
   icon: React.ReactNode;
   accent: "teal" | "green" | "red" | "purple" | "blue" | "indigo";
+  onClick?: () => void;
+  active?: boolean;
 }) {
-  return (
-    <div className={`dash-stat dash-stat--${accent}`}>
+  const body = (
+    <>
       <div className="dash-stat-icon">{icon}</div>
       <div className="dash-stat-body">
         <strong className="dash-stat-value">{typeof value === "number" ? value.toLocaleString() : value}</strong>
         <span className="dash-stat-label">{label}</span>
         <span className="dash-stat-sub">{sub}</span>
       </div>
-    </div>
+    </>
   );
+  const className = `dash-stat dash-stat--${accent}${onClick ? " dash-stat--clickable" : ""}${active ? " dash-stat--active" : ""}`;
+  if (onClick) {
+    return <button type="button" className={className} onClick={onClick}>{body}</button>;
+  }
+  return <div className={className}>{body}</div>;
 }

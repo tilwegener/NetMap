@@ -648,6 +648,8 @@ def create_device(
         vendor=payload.vendor,
         device_type=payload.device_type,
         status=payload.status,
+        lifecycle=payload.lifecycle,
+        monitoring_paused=payload.monitoring_paused,
         icon=payload.icon,
         color=payload.color,
         vlan_id=payload.vlan_id,

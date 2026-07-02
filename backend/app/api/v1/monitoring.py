@@ -85,9 +85,10 @@ def fleet_summary(
         return cached[1]
     _fleet_summary_cache_misses += 1
 
+    paused_condition = or_(Device.monitoring_paused == True, Device.lifecycle != "active")  # noqa: E712
     status_rows = db.execute(
         select(Device.monitor_status, func.count())
-        .where(Device.status != "disabled")
+        .where(Device.status != "disabled", ~paused_condition)
         .group_by(Device.monitor_status)
     ).all()
     total = 0
@@ -100,6 +101,10 @@ def fleet_summary(
         elif status == "offline":
             offline = count
     unknown = total - online - offline
+    paused = int(db.scalar(
+        select(func.count()).select_from(Device).where(Device.status != "disabled", paused_condition)
+    ) or 0)
+    total += paused
 
     last_checked_row = db.scalar(select(func.max(DeviceMonitorHistory.checked_at)))
     since = datetime.now(timezone.utc) - timedelta(hours=1)
@@ -115,6 +120,7 @@ def fleet_summary(
         online=online,
         offline=offline,
         unknown=unknown,
+        paused=paused,
         avg_rtt_ms=float(avg_rtt) if avg_rtt is not None else None,
         last_checked=_as_utc(last_checked_row) if last_checked_row else None,
     )
@@ -196,6 +202,7 @@ def _build_device_summaries(
             for row in uptime_rows
         }
 
+    one_hour_ago = now - timedelta(hours=1)
     results: list[DeviceMonitorSummary] = []
     for device in devices:
         history_recent = history_by_device.get(device.id, [])
@@ -204,6 +211,9 @@ def _build_device_summaries(
         last_record = history_recent[0] if history_recent else None
         heartbeat = [h.status for h in reversed(history_recent)]
         rtt_sparkline: list[float | None] = [h.rtt_ms for h in reversed(history_recent)]
+        recent_hour = [h for h in reversed(history_recent) if _as_utc(h.checked_at) >= one_hour_ago]
+        transitions = sum(1 for a, b in zip(recent_hour, recent_hour[1:]) if a.status != b.status)
+        is_paused = bool(device.monitoring_paused) or device.lifecycle != "active"
 
         results.append(
             DeviceMonitorSummary(
@@ -211,7 +221,9 @@ def _build_device_summaries(
                 display_name=device.display_name,
                 hostname=device.hostname,
                 ip_address=device.ip_address,
-                status=device.monitor_status or "unknown",
+                status="paused" if is_paused else (device.monitor_status or "unknown"),
+                lifecycle=device.lifecycle or "active",
+                monitoring_paused=bool(device.monitoring_paused),
                 topology_group=device.topology_group or group_name_map.get(device.topology_group_id) or None,
                 site_id=device.site_id,
                 site_name=site_map.get(device.site_id) if device.site_id else None,
@@ -224,6 +236,7 @@ def _build_device_summaries(
                 heartbeat=heartbeat,
                 rtt_sparkline=rtt_sparkline,
                 is_favourite=bool(device.is_favourite),
+                flapping=transitions >= 4 and not is_paused,
             )
         )
 
@@ -444,6 +457,7 @@ def create_port_target(
         port=payload.port,
         label=payload.label,
         check_type=payload.check_type,
+        http_path=payload.http_path if payload.check_type in ("http", "https") else None,
         enabled=payload.enabled,
     )
     db.add(target)

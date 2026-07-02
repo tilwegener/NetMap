@@ -11,7 +11,9 @@ export function buildDevicePayload(device: Device, overrides: Partial<DevicePayl
     os: device.os,
     device_type: device.device_type,
     status: device.status,
-    icon: (deviceTypeIconMap[device.device_type ?? ""] || device.icon || "device") as DeviceIcon,
+    lifecycle: device.lifecycle ?? "active",
+    monitoring_paused: device.monitoring_paused ?? false,
+    icon: (device.icon || deviceTypeIconMap[device.device_type ?? ""] || "device") as DeviceIcon,
     color: device.color,
     vlan_id: device.vlan_id,
     subnet: device.subnet,
@@ -23,4 +25,8 @@ export function buildDevicePayload(device: Device, overrides: Partial<DevicePayl
     notes: device.notes,
   };
   return { ...base, ...overrides };
+}
+
+export function isDeviceMonitoringPaused(device: Pick<Device, "lifecycle" | "monitoring_paused">): boolean {
+  return Boolean(device.monitoring_paused) || (device.lifecycle ?? "active") !== "active";
 }

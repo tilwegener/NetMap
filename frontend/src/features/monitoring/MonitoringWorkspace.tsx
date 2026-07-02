@@ -4,7 +4,7 @@ import { IconServer, IconWifi, IconWifiOff, IconAlertCircle, IconPlugConnected }
 import {
   api,
   type FleetSummary, type DeviceMonitorSummary, type MonitorHistoryPoint,
-  type PortTarget, type AlertEvent, type AlertRule, type DeviceAnalysis,
+  type PortTarget, type AlertEvent, type AlertRule, type DeviceAnalysis, type ServiceCheckType,
 } from "../../api/client";
 import { TopbarNoteCtx } from "../../context";
 import { type Incident } from "../../types";
@@ -18,6 +18,7 @@ import { Modal } from "../../components/Modal";
 
 export function MonitoringWorkspace({
   accessToken,
+  canWrite,
   favouriteIds,
   livePingEnabled,
   monitorIntervalSeconds,
@@ -110,12 +111,14 @@ export function MonitoringWorkspace({
   const [showPortsModal, setShowPortsModal] = useState(false);
   const [portFormPort, setPortFormPort] = useState("");
   const [portFormLabel, setPortFormLabel] = useState("");
-  const [portFormProtocol, setPortFormProtocol] = useState<"tcp" | "udp">("tcp");
+  const [portFormProtocol, setPortFormProtocol] = useState<ServiceCheckType>("tcp");
+  const [portFormPath, setPortFormPath] = useState("");
   const [portFormScope, setPortFormScope] = useState<"global" | "device">("global");
   const [portFormDeviceIds, setPortFormDeviceIds] = useState<Set<number>>(new Set());
   const [portDeviceSearch, setPortDeviceSearch] = useState("");
   const [portBusy, setPortBusy] = useState(false);
   const [portError, setPortError] = useState<string | null>(null);
+  const [pauseBusyId, setPauseBusyId] = useState<number | null>(null);
   const [searchQ, setSearchQ] = useState("");
   const [refreshing, setRefreshing] = useState(false);
   const [sortKey, setSortKey] = useState<"status" | "name" | "uptime24" | "uptime7" | "rtt" | "checked">("name");
@@ -280,7 +283,7 @@ export function MonitoringWorkspace({
     filtered.sort((a, b) => {
       switch (sortKey) {
         case "status": {
-          const order: Record<string, number> = { online: 0, warning: 1, unknown: 2, offline: 3 };
+          const order: Record<string, number> = { online: 0, warning: 1, paused: 2, unknown: 3, offline: 4 };
           return ((order[a.status] ?? 4) - (order[b.status] ?? 4)) * dir;
         }
         case "name": {
@@ -348,6 +351,7 @@ export function MonitoringWorkspace({
               port,
               label: portFormLabel.trim(),
               check_type: portFormProtocol,
+              http_path: (portFormProtocol === "http" || portFormProtocol === "https") && portFormPath.trim() ? portFormPath.trim() : null,
               enabled: true,
             })
           )
@@ -367,6 +371,41 @@ export function MonitoringWorkspace({
       await api.deletePortTarget(accessToken, id);
       setPortTargets((prev) => prev.filter((p) => p.id !== id));
     } catch { /* ignore */ }
+  }
+
+  async function toggleDevicePause(device: DeviceMonitorSummary) {
+    const shouldPause = !device.monitoring_paused;
+    setPauseBusyId(device.device_id);
+    try {
+      await api.updateDevice(accessToken, device.device_id, { monitoring_paused: shouldPause });
+      setDevices((current) =>
+        current.map((row) =>
+          row.device_id === device.device_id
+            ? {
+                ...row,
+                status: shouldPause || row.lifecycle !== "active" ? "paused" : "unknown",
+                monitoring_paused: shouldPause,
+                flapping: shouldPause ? false : row.flapping,
+              }
+            : row,
+        ),
+      );
+      setFleet((current) =>
+        current
+          ? {
+              ...current,
+              paused: Math.max(0, current.paused + (shouldPause ? 1 : -1)),
+            }
+          : current,
+      );
+      if (!shouldPause) {
+        void loadAll();
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to update monitoring pause");
+    } finally {
+      setPauseBusyId(null);
+    }
   }
 
   function fmtTime(iso: string | null) {
@@ -405,9 +444,11 @@ export function MonitoringWorkspace({
         <DashStat
           label="Monitored"
           value={fleet?.total ?? 0}
-          sub={fleet?.total === 0 ? "no active devices" : "active devices"}
+          sub={(fleet?.paused ?? 0) > 0 ? `${fleet?.paused} paused` : fleet?.total === 0 ? "no active devices" : "active devices"}
           icon={<IconServer size={20} />}
           accent="teal"
+          onClick={() => setFilterStatus("all")}
+          active={filterStatus === "all"}
         />
         <DashStat
           label="Live ping"
@@ -422,6 +463,8 @@ export function MonitoringWorkspace({
           sub="reachable"
           icon={<IconWifi size={20} />}
           accent="green"
+          onClick={() => setFilterStatus((current) => current === "online" ? "all" : "online")}
+          active={filterStatus === "online"}
         />
         <DashStat
           label="Offline"
@@ -429,6 +472,8 @@ export function MonitoringWorkspace({
           sub={(fleet?.offline ?? 0) > 0 ? "need attention" : "all clear"}
           icon={<IconWifiOff size={20} />}
           accent={(fleet?.offline ?? 0) > 0 ? "red" : "green"}
+          onClick={() => setFilterStatus((current) => current === "offline" ? "all" : "offline")}
+          active={filterStatus === "offline"}
         />
         {(() => {
           const labels = [...new Set(portTargets.map((p) => p.label))].sort();
@@ -487,6 +532,7 @@ export function MonitoringWorkspace({
                 <option value="offline">Offline</option>
                 <option value="warning">Warning</option>
                 <option value="unknown">Unknown</option>
+                <option value="paused">Paused</option>
               </select>
               {groupOptions.length > 0 && (
                 <select className="toolbar-select" value={filterGroup} onChange={(e) => setFilterGroup(e.target.value)}>
@@ -614,7 +660,10 @@ export function MonitoringWorkspace({
                       <td>
                         <div className="mon-device-cell">
                           <div className="mon-device-meta">
-                            <span className="mon-device-name">{d.display_name ?? d.hostname ?? d.ip_address}</span>
+                            <span className="mon-device-name">
+                              {d.display_name ?? d.hostname ?? d.ip_address}
+                              {d.flapping && <span className="mon-flap-badge" title="Status changed 4+ times in the last hour">flapping</span>}
+                            </span>
                             <span className="mon-device-ip">{d.ip_address}</span>
                           </div>
                           {d.heartbeat.length > 0 && <HeartbeatBar beats={d.heartbeat.slice(-48)} size="sm" />}
@@ -701,12 +750,27 @@ export function MonitoringWorkspace({
                     <select
                       className="mon-ports-input"
                       value={portFormProtocol}
-                      onChange={(e) => setPortFormProtocol(e.target.value as "tcp" | "udp")}
+                      onChange={(e) => setPortFormProtocol(e.target.value as ServiceCheckType)}
                     >
                       <option value="tcp">TCP</option>
                       <option value="udp">UDP</option>
+                      <option value="http">HTTP</option>
+                      <option value="https">HTTPS</option>
                     </select>
                   </label>
+                  {(portFormProtocol === "http" || portFormProtocol === "https") && (
+                    <label className="mon-ports-field-label">
+                      Path (optional)
+                      <input
+                        type="text"
+                        className="mon-ports-input"
+                        placeholder="/health"
+                        value={portFormPath}
+                        onChange={(e) => setPortFormPath(e.target.value)}
+                        maxLength={200}
+                      />
+                    </label>
+                  )}
                   <label className="mon-ports-field-label">
                     Scope
                     <select
@@ -870,7 +934,32 @@ export function MonitoringWorkspace({
                   </div>
                 </div>
               </div>
-              <button type="button" className="mon-hero-close" onClick={() => setSelectedId(null)} title="Close">✕</button>
+              <div className="mon-hero-actions">
+                {canWrite && (
+                  <button
+                    type="button"
+                    className="nm-btn nm-btn--sm"
+                    disabled={pauseBusyId === selectedDevice.device_id || (!selectedDevice.monitoring_paused && selectedDevice.lifecycle !== "active")}
+                    onClick={() => void toggleDevicePause(selectedDevice)}
+                    title={
+                      selectedDevice.lifecycle !== "active" && !selectedDevice.monitoring_paused
+                        ? `Lifecycle is ${selectedDevice.lifecycle}; set lifecycle to Active to monitor this device`
+                        : selectedDevice.monitoring_paused
+                        ? "Resume monitoring for this device"
+                        : "Pause monitoring for this device"
+                    }
+                  >
+                    {pauseBusyId === selectedDevice.device_id
+                      ? "Saving..."
+                      : selectedDevice.monitoring_paused
+                      ? "Resume monitoring"
+                      : selectedDevice.lifecycle !== "active"
+                      ? `Lifecycle: ${selectedDevice.lifecycle}`
+                      : "Pause monitoring"}
+                  </button>
+                )}
+                <button type="button" className="mon-hero-close" onClick={() => setSelectedId(null)} title="Close">✕</button>
+              </div>
             </div>
 
             {/* Stat strip */}

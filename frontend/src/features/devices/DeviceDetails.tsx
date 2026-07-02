@@ -27,7 +27,7 @@ import {
   api,
 } from "../../api/client";
 import { deviceLabel, statusColor, formatDeviceTypeLabel, deviceVlanDisplay, formatEventTime } from "../../utils/format";
-import { buildDevicePayload } from "../../utils/device";
+import { buildDevicePayload, isDeviceMonitoringPaused } from "../../utils/device";
 import { deviceTypeOptions } from "../../constants";
 import { deviceTypeIconMap } from "../../icons";
 import { DeviceTypeIcon } from "../../components/DeviceTypeIcon";
@@ -108,7 +108,8 @@ export function DeviceDetails({
   }
 
   const editHint = canWrite && !disabled;
-  const dotStatus = liveStatus?.status ?? device.monitor_status ?? device.status;
+  const monitoringPaused = isDeviceMonitoringPaused(device);
+  const dotStatus = monitoringPaused ? "paused" : (liveStatus?.status ?? device.monitor_status ?? device.status);
   const assignedSnmpProfile = snmpProfiles.find((profile) => profile.id === device.snmp_profile_id) ?? null;
 
   async function previewSnmpEnrichment() {
@@ -146,7 +147,7 @@ export function DeviceDetails({
           <div className="details-heading-body">
             <div className="details-heading-title-row">
               <h3>{deviceLabel(device)}</h3>
-              {liveStatus && liveStatus.status !== "unknown" && (
+              {!monitoringPaused && liveStatus && liveStatus.status !== "unknown" && (
                 <span className={`details-live-badge details-live-badge--${liveStatus.status}`}>
                   <span className="details-live-dot" />
                   {liveStatus.status}
@@ -154,6 +155,21 @@ export function DeviceDetails({
                     <span className="details-live-rtt">{liveStatus.latency_ms.toFixed(1)} ms</span>
                   )}
                 </span>
+              )}
+              {monitoringPaused && (
+                <span className="details-live-badge" style={{ opacity: 0.7 }}>
+                  {device.monitoring_paused ? "monitoring paused" : device.lifecycle}
+                </span>
+              )}
+              {canWrite && !disabled && (
+                <button
+                  type="button"
+                  className="admin-action-btn"
+                  title={device.monitoring_paused ? "Resume monitoring for this device" : "Pause monitoring for this device"}
+                  onClick={() => void commitField({ monitoring_paused: !device.monitoring_paused })}
+                >
+                  {device.monitoring_paused ? "Resume" : "Pause"}
+                </button>
               )}
             </div>
           </div>

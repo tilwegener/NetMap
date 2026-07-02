@@ -4311,9 +4311,9 @@ body:not(.theme-dark) .inventory-row.active {
 }
 
 .status-pill.paused {
-  color: #b91c1c;
-  background: rgba(185,28,28,0.1);
-  border: 1px solid rgba(185,28,28,0.3);
+  color: #536879;
+  background: rgba(120, 140, 155, 0.14);
+  border: 1px solid rgba(120, 140, 155, 0.34);
 }
 .status-pill.paused::before {
   content: '';
@@ -4322,7 +4322,7 @@ body:not(.theme-dark) .inventory-row.active {
   height: 6px;
   border-radius: 50%;
   flex-shrink: 0;
-  background: #e05050;
+  background: #9aabb6;
 }
 
 .status-pill.warning {
@@ -5723,7 +5723,7 @@ body.theme-dark .modal-header button.modal-close-btn:hover {
 }
 
 .status-dot.paused {
-  background: #e05050;
+  background: #9aabb6;
 }
 
 .status-dot.warning {
@@ -7393,8 +7393,8 @@ body.theme-dark .status-pill.online  { color: #4ade80; background: rgba(74,222,1
 body.theme-dark .status-pill.offline { color: #f87171; background: rgba(248,113,113,0.1); border-color: rgba(248,113,113,0.25); }
 body.theme-dark .status-pill.online::before  { background: #4ade80; }
 body.theme-dark .status-pill.offline::before { background: #f87171; }
-body.theme-dark .status-pill.paused { color: #f87171; background: rgba(248,113,113,0.12); border-color: rgba(248,113,113,0.3); }
-body.theme-dark .status-pill.paused::before { background: #f87171; }
+body.theme-dark .status-pill.paused { color: #9fb2c0; background: rgba(130,150,165,0.14); border-color: rgba(130,150,165,0.32); }
+body.theme-dark .status-pill.paused::before { background: #8fa3b2; }
 body.theme-dark .status-pill.warning { background: rgba(217,154,34,0.1); border-color: rgba(217,154,34,0.25); color: #fbbf24; }
 
 body.theme-dark .details-live-badge--online  { background: rgba(74,222,128,0.1); border-color: rgba(74,222,128,0.2); color: #4ade80; }
@@ -10453,7 +10453,7 @@ span.mon-device-ip { display: block; }
 .mon-dot-warning { background: var(--dash-amber); }
 .mon-dot-unknown { background: var(--dash-muted); }
 .mon-dot-disabled { background: #c0ccd8; }
-.mon-dot-paused { background: var(--dash-red); box-shadow: 0 0 0 2px rgba(224,80,80,0.2); }
+.mon-dot-paused { background: #9aabb6; box-shadow: 0 0 0 2px rgba(154,171,182,0.2); }
 
 /* Uptime badge */
 .mon-uptime {
@@ -11011,12 +11011,14 @@ body.theme-dark .mon-checks-group-label { color: #4a7a96; }
 .mon-hero-header--offline { border-top-color: var(--dash-red); }
 .mon-hero-header--warning { border-top-color: var(--dash-amber); }
 .mon-hero-header--unknown,
-.mon-hero-header--disabled { border-top-color: #8899aa; }
+.mon-hero-header--disabled,
+.mon-hero-header--paused { border-top-color: #8899aa; }
 
 .mon-hero-header-left {
   display: flex;
   align-items: center;
   gap: 14px;
+  min-width: 0;
 }
 .mon-hero-header-left .mon-dot {
   width: 13px;
@@ -11035,6 +11037,13 @@ body.theme-dark .mon-checks-group-label { color: #4a7a96; }
   font-size: 12.5px;
   color: #7a96a8;
   margin-top: 2px;
+}
+
+.mon-hero-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
 }
 
 .mon-hero-close {
@@ -11619,7 +11628,6 @@ body.theme-dark .ipam-reservations-panel { border-color: rgba(60, 100, 130, 0.7)
 .ipam-legend-item { display: flex; align-items: center; gap: 4px; }
 .ipam-legend-dot { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; border: 1px solid rgba(0,0,0,0.08); }
 .ipam-legend-tip { margin-left: auto; font-style: italic; opacity: 0.7; }
-
 .ipam-vlan-sync-label {
   display: flex;
   align-items: center;
@@ -12467,6 +12475,12 @@ body.theme-dark .fav-btn--active { color: #e8b840; }
   color: #fff;
 }
 
+.nm-btn--secondary {
+  background: var(--nm-surface-soft);
+  border-color: var(--nm-border-strong);
+  color: var(--nm-text);
+}
+
 .nm-btn.nm-btn--primary:hover:not(:disabled) {
   background: #1f7a8a;
   border-color: #1f7a8a;
@@ -12806,3 +12820,54 @@ body.theme-dark .nm-status--warning { color: #e8b040; }
 .modal-header .nm-btn--icon {
   min-height: unset;
 }
+
+.modal-header-actions .ipam-next-ip-header-btn {
+  height: 31px;
+  min-height: unset;
+  padding: 0 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1;
+}
+
+/* ── 2026-07-02 feature batch: pause/flapping/saved searches/expiry ───────── */
+.mon-dot-paused { background: #9aabb6; box-shadow: 0 0 0 2px rgba(154,171,182,0.2); }
+.mon-flap-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #b45309;
+  background: rgba(217, 154, 34, 0.16);
+  vertical-align: middle;
+}
+button.dash-stat {
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.dash-stat--active {
+  outline: 2px solid var(--nm-accent, #1d9ab0);
+  outline-offset: -2px;
+}
+.ipam-expired-badge {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #b91c1c;
+  background: rgba(220, 38, 38, 0.14);
+}
+.security-saved-searches {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.theme-dark .mon-flap-badge { color: #fbbf24; background: rgba(217, 154, 34, 0.22); }
+.theme-dark .ipam-expired-badge { color: #fca5a5; background: rgba(220, 38, 38, 0.25); }

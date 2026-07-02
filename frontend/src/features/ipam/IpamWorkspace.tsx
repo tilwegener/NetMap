@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback, useContext, type FormEvent }
 import { Network, Activity, X, ChevronUp, ChevronDown } from "lucide-react";
 import {
   IconServer, IconWifi, IconWifiOff, IconMapPin, IconAlertCircle, IconArrowRight,
-  IconTag, IconFingerprint, IconNote, IconUsers, IconDeviceLaptop, IconClock,
+  IconTag, IconFingerprint, IconNote, IconUsers, IconDeviceLaptop, IconClock, IconCalendar,
 } from "@tabler/icons-react";
 import {
   api,
@@ -60,8 +60,10 @@ export function IpamWorkspace({ accessToken, canWrite }: { accessToken: string; 
   const [reserveLabel, setReserveLabel] = useState("");
   const [reserveMac, setReserveMac] = useState("");
   const [reserveNotes, setReserveNotes] = useState("");
+  const [reserveExpires, setReserveExpires] = useState(""); // YYYY-MM-DD, blank = never
   const [reserveBusy, setReserveBusy] = useState(false);
   const [reserveError, setReserveError] = useState<string | null>(null);
+  const [nextFreeBusySubnetId, setNextFreeBusySubnetId] = useState<number | null>(null);
   const [showReservations, setShowReservations] = useState(false);
   const [resSubnetFilter, setResSubnetFilter] = useState<number | "all">("all");
 
@@ -216,6 +218,7 @@ export function IpamWorkspace({ accessToken, canWrite }: { accessToken: string; 
     setReserveLabel("");
     setReserveMac("");
     setReserveNotes("");
+    setReserveExpires("");
     setReserveError(null);
   }
 
@@ -226,7 +229,31 @@ export function IpamWorkspace({ accessToken, canWrite }: { accessToken: string; 
     setReserveLabel("");
     setReserveMac("");
     setReserveNotes("");
+    setReserveExpires("");
     setReserveError(null);
+  }
+
+  async function openNextFreeReservation(subnet: IpamSubnet) {
+    if (!canWrite) return;
+    setNextFreeBusySubnetId(subnet.id);
+    setSelectedSubnet(subnet);
+    setEditingReservation(null);
+    setReserveIpLocked(true);
+    setReserveLabel("");
+    setReserveMac("");
+    setReserveNotes("");
+    setReserveExpires("");
+    setReserveError(null);
+    try {
+      const { ip } = await api.getNextAvailableIp(accessToken, subnet.id);
+      setReserveIp(ip);
+    } catch (err) {
+      setReserveIp("");
+      setReserveIpLocked(false);
+      setReserveError(err instanceof Error ? err.message : "No free IP found");
+    } finally {
+      setNextFreeBusySubnetId(null);
+    }
   }
 
   function openEditReservation(r: IpReservation) {
@@ -236,6 +263,7 @@ export function IpamWorkspace({ accessToken, canWrite }: { accessToken: string; 
     setReserveLabel(r.label);
     setReserveMac(r.mac_address ?? "");
     setReserveNotes(r.notes ?? "");
+    setReserveExpires(r.expires_at ? r.expires_at.slice(0, 10) : "");
     setReserveError(null);
   }
 
@@ -256,6 +284,7 @@ export function IpamWorkspace({ accessToken, canWrite }: { accessToken: string; 
           label: reserveLabel.trim(),
           mac_address: reserveMac.trim() || null,
           notes: reserveNotes.trim() || null,
+          expires_at: reserveExpires ? `${reserveExpires}T23:59:59Z` : null,
         });
       } else {
         const ips = parseReserveIpInput(reserveIp);
@@ -266,6 +295,7 @@ export function IpamWorkspace({ accessToken, canWrite }: { accessToken: string; 
             mac_address: ips.length === 1 ? (reserveMac.trim() || null) : null,
             notes: reserveNotes.trim() || null,
             subnet_id: selectedSubnet?.id ?? null,
+            expires_at: reserveExpires ? `${reserveExpires}T23:59:59Z` : null,
           });
         }
       }
@@ -522,8 +552,21 @@ export function IpamWorkspace({ accessToken, canWrite }: { accessToken: string; 
                 </select>
               </label>
             )}
+            {canWrite && reservations.some((r) => r.expires_at && new Date(r.expires_at) < new Date()) && (
+              <button
+                type="button"
+                className="nm-btn"
+                onClick={async () => {
+                  if (!confirm("Delete all expired reservations?")) return;
+                  const { deleted } = await api.deleteExpiredReservations(accessToken);
+                  if (deleted > 0) { await load(); if (selectedSubnet) void loadAddresses(selectedSubnet); }
+                }}
+              >
+                Clear expired
+              </button>
+            )}
             {canWrite && (
-              <button type="button" className="nm-btn nm-btn--primary" onClick={openNewReservation}>
+              <button type="button" className="nm-btn nm-btn--secondary" onClick={openNewReservation}>
                 + Reserve IP
               </button>
             )}
@@ -545,6 +588,7 @@ export function IpamWorkspace({ accessToken, canWrite }: { accessToken: string; 
                     <th><IconFingerprint size={12} style={{ marginRight: 4, verticalAlign: "middle" }} />MAC</th>
                     <th><IconNote size={12} style={{ marginRight: 4, verticalAlign: "middle" }} />Notes</th>
                     <th><IconUsers size={12} style={{ marginRight: 4, verticalAlign: "middle" }} />Reserved by</th>
+                    <th><IconCalendar size={12} style={{ marginRight: 4, verticalAlign: "middle" }} />Expires</th>
                     {canWrite && <th />}
                   </tr>
                 </thead>
@@ -556,6 +600,13 @@ export function IpamWorkspace({ accessToken, canWrite }: { accessToken: string; 
                       <td className="mon-cell-mono">{r.mac_address ?? <span className="dash-panel-meta">—</span>}</td>
                       <td>{r.notes ?? <span className="dash-panel-meta">—</span>}</td>
                       <td className="mon-cell-mono">{r.reserved_by ?? <span className="dash-panel-meta">—</span>}</td>
+                      <td className="mon-cell-mono">
+                        {r.expires_at ? (
+                          new Date(r.expires_at) < new Date()
+                            ? <span className="ipam-expired-badge" title={r.expires_at}>expired</span>
+                            : r.expires_at.slice(0, 10)
+                        ) : <span className="dash-panel-meta">—</span>}
+                      </td>
                       {canWrite && (
                         <td>
                           <span className="ipam-row-actions">
@@ -637,6 +688,14 @@ export function IpamWorkspace({ accessToken, canWrite }: { accessToken: string; 
                       {canWrite && (
                         <td onClick={(e) => e.stopPropagation()}>
                           <span className="ipam-row-actions">
+                            <button
+                              type="button"
+                              className="nm-btn nm-btn--sm"
+                              disabled={nextFreeBusySubnetId === s.id}
+                              onClick={() => void openNextFreeReservation(s)}
+                            >
+                              {nextFreeBusySubnetId === s.id ? "Finding..." : "Next free"}
+                            </button>
                             <button type="button" className="nm-btn nm-btn--sm" onClick={() => { setEditingSubnet(s); setShowSubnetForm(false); }}>Edit</button>
                             <button type="button" className="nm-btn nm-btn--sm nm-btn--danger" onClick={() => void deleteSubnet(s)}>Delete</button>
                           </span>
@@ -664,6 +723,16 @@ export function IpamWorkspace({ accessToken, canWrite }: { accessToken: string; 
               {selectedSubnet.vlan_id && <span className="mon-device-ip">VLAN {selectedSubnet.vlan_id}</span>}
             </>
           )}
+          headerActions={canWrite ? (
+            <button
+              type="button"
+              className="nm-btn nm-btn--secondary ipam-next-ip-header-btn"
+              disabled={nextFreeBusySubnetId === selectedSubnet.id}
+              onClick={() => void openNextFreeReservation(selectedSubnet)}
+            >
+              {nextFreeBusySubnetId === selectedSubnet.id ? "Finding..." : `Reserve next IP in ${selectedSubnet.cidr}`}
+            </button>
+          ) : undefined}
         >
           <div className="ipam-modal-stats">
             <div className="ipam-modal-stat">
@@ -793,7 +862,7 @@ export function IpamWorkspace({ accessToken, canWrite }: { accessToken: string; 
                 <button
                   type="submit"
                   form="reserve-ip-form"
-                  className="nm-btn nm-btn--primary"
+                  className="nm-btn nm-btn--secondary"
                   disabled={reserveBusy || !reserveLabel.trim()}
                 >
                   {reserveBusy ? "Saving…" : editingReservation ? "Save changes" : (() => {
@@ -819,6 +888,23 @@ export function IpamWorkspace({ accessToken, canWrite }: { accessToken: string; 
                 onChange={(e) => setReserveIp(e.target.value)}
               />
             </label>
+            {!reserveIpLocked && !editingReservation && selectedSubnet && (
+              <button
+                type="button"
+                className="nm-btn nm-btn--sm"
+                style={{ alignSelf: "flex-start" }}
+                onClick={async () => {
+                  try {
+                    const { ip } = await api.getNextAvailableIp(accessToken, selectedSubnet.id);
+                    setReserveIp(ip);
+                  } catch (err) {
+                    setReserveError(err instanceof Error ? err.message : "No free IP found");
+                  }
+                }}
+              >
+                Use next free IP in {selectedSubnet.cidr}
+              </button>
+            )}
             {!reserveIpLocked && !editingReservation && reserveIp ? (() => {
               const result = parseReserveIpInput(reserveIp);
               return Array.isArray(result) && result.length > 1
@@ -860,6 +946,16 @@ export function IpamWorkspace({ accessToken, canWrite }: { accessToken: string; 
                 value={reserveNotes}
                 onChange={(e) => setReserveNotes(e.target.value)}
               />
+            </label>
+            <label className="nm-field">
+              <span className="nm-field-label">Expires</span>
+              <input
+                type="date"
+                className="nm-input"
+                value={reserveExpires}
+                onChange={(e) => setReserveExpires(e.target.value)}
+              />
+              <span className="dash-panel-meta">Leave blank to keep the reservation until removed.</span>
             </label>
             {reserveError && <p className="nm-alert nm-alert--error">{reserveError}</p>}
           </form>

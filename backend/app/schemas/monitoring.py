@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class PortResult(BaseModel):
@@ -30,6 +30,8 @@ class DeviceMonitorSummary(BaseModel):
     hostname: str | None
     ip_address: str
     status: str
+    lifecycle: str = "active"
+    monitoring_paused: bool = False
     topology_group: str | None
     site_id: int | None
     site_name: str | None
@@ -42,6 +44,7 @@ class DeviceMonitorSummary(BaseModel):
     heartbeat: list[str] = []  # last 50 poll statuses, oldest → newest
     rtt_sparkline: list[float | None] = []  # matching rtt_ms values, same order
     is_favourite: bool = False
+    flapping: bool = False  # >= 4 status transitions in the last hour
 
 
 class FleetSummary(BaseModel):
@@ -49,6 +52,7 @@ class FleetSummary(BaseModel):
     online: int
     offline: int
     unknown: int
+    paused: int = 0
     avg_rtt_ms: float | None
     last_checked: datetime | None
 
@@ -78,6 +82,7 @@ class PortTargetOut(BaseModel):
     port: int
     label: str
     check_type: str = "tcp"
+    http_path: str | None = None
     enabled: bool = True
     created_at: datetime
 
@@ -88,5 +93,20 @@ class PortTargetCreate(BaseModel):
     device_id: int | None = None
     port: int = Field(..., ge=1, le=65535)
     label: str = Field(..., min_length=1, max_length=60)
-    check_type: str = Field(default="tcp", pattern="^(tcp|udp)$")
+    check_type: str = Field(default="tcp", pattern="^(tcp|udp|http|https)$")
+    http_path: str | None = Field(default=None, max_length=200)
     enabled: bool = True
+
+    @field_validator("http_path")
+    @classmethod
+    def validate_http_path(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        path = value.strip()
+        if not path:
+            return None
+        if not path.startswith("/"):
+            raise ValueError("HTTP path must start with /")
+        if any(ch in path for ch in ("\r", "\n", " ", "#")):
+            raise ValueError("HTTP path contains invalid characters")
+        return path

@@ -11,9 +11,13 @@ export default defineConfig({
     chunkSizeWarningLimit: 600,
   },
   server: {
-    port: 8080,
+    port: 5173,
     proxy: {
-      "/api": "http://backend:8000",
+      "/api": {
+        target: process.env.VITE_API_TARGET ?? "http://127.0.0.1:8090",
+        changeOrigin: true,
+        ws: true,
+      },
     },
   },
 });

@@ -45,7 +45,7 @@ def get_db() -> Generator[Session, None, None]:
 
 
 def init_db() -> None:
-    from app.models import alert_rule, auth_session, audit_log, device, dhcp_lease, discovery, ip_reservation, monitor_history, notification_profile, password_reset_token, port_target, relationship, site, snmp_profile, subnet, system_setting, topology_group, topology_layout, user, user_device_favourite  # noqa: F401
+    from app.models import alert_rule, auth_session, audit_log, device, dhcp_lease, discovery, ip_reservation, monitor_history, notification_delivery, notification_profile, password_reset_token, port_target, relationship, saved_search, site, snmp_profile, subnet, system_setting, topology_group, topology_layout, user, user_device_favourite  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
     _ensure_migrations_table()
@@ -125,6 +125,12 @@ def apply_sqlite_schema_updates() -> None:
         _run_migration(conn, inspector, "0033_scheduled_discovery", _migrate_scheduled_discovery)
         _run_migration(conn, inspector, "0034_lldp_neighbours", _migrate_lldp_neighbours)
         _run_migration(conn, inspector, "0035_device_os", _migrate_device_os)
+        _run_migration(conn, inspector, "0036_alert_rule_threshold_ms", _migrate_alert_rule_threshold_ms)
+        _run_migration(conn, inspector, "0037_device_monitoring_fields", _migrate_device_monitoring_fields)
+        _run_migration(conn, inspector, "0038_service_check_http_path", _migrate_service_check_http_path)
+        _run_migration(conn, inspector, "0039_notification_deliveries", _migrate_notification_deliveries)
+        _run_migration(conn, inspector, "0040_ip_reservation_expiry", _migrate_ip_reservation_expiry)
+        _run_migration(conn, inspector, "0041_saved_security_searches", _migrate_saved_security_searches)
 
 
 def _run_migration(conn, inspector, name: str, fn) -> None:
@@ -827,3 +833,74 @@ def _migrate_device_os(conn, inspector) -> None:
     existing = {col["name"] for col in inspector.get_columns("devices")}
     if "os" not in existing:
         conn.execute(text("ALTER TABLE devices ADD COLUMN os VARCHAR(255)"))
+
+
+def _migrate_alert_rule_threshold_ms(conn, inspector) -> None:
+    if "alert_rules" not in inspector.get_table_names():
+        return
+    existing = {col["name"] for col in inspector.get_columns("alert_rules")}
+    if "threshold_ms" not in existing:
+        conn.execute(text("ALTER TABLE alert_rules ADD COLUMN threshold_ms INTEGER"))
+
+
+def _migrate_device_monitoring_fields(conn, inspector) -> None:
+    existing = {col["name"] for col in inspector.get_columns("devices")}
+    if "monitoring_paused" not in existing:
+        conn.execute(text("ALTER TABLE devices ADD COLUMN monitoring_paused BOOLEAN NOT NULL DEFAULT 0"))
+    if "lifecycle" not in existing:
+        conn.execute(text("ALTER TABLE devices ADD COLUMN lifecycle VARCHAR(20) NOT NULL DEFAULT 'active'"))
+
+
+def _migrate_service_check_http_path(conn, inspector) -> None:
+    if "device_port_targets" not in inspector.get_table_names():
+        return
+    existing = {col["name"] for col in inspector.get_columns("device_port_targets")}
+    if "http_path" not in existing:
+        conn.execute(text("ALTER TABLE device_port_targets ADD COLUMN http_path VARCHAR(200)"))
+
+
+def _migrate_notification_deliveries(conn, inspector) -> None:
+    conn.execute(
+        text(
+            """
+            CREATE TABLE IF NOT EXISTS notification_deliveries (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                rule_name VARCHAR(120) NOT NULL DEFAULT '',
+                device_id INTEGER,
+                target VARCHAR(120) NOT NULL,
+                status VARCHAR(12) NOT NULL,
+                detail VARCHAR(255) NOT NULL DEFAULT '',
+                sent_at DATETIME NOT NULL
+            )
+            """
+        )
+    )
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_notification_deliveries_id ON notification_deliveries (id)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_notification_deliveries_sent_at ON notification_deliveries (sent_at)"))
+
+
+def _migrate_ip_reservation_expiry(conn, inspector) -> None:
+    if "ip_reservations" not in inspector.get_table_names():
+        return
+    existing = {col["name"] for col in inspector.get_columns("ip_reservations")}
+    if "expires_at" not in existing:
+        conn.execute(text("ALTER TABLE ip_reservations ADD COLUMN expires_at DATETIME"))
+
+
+def _migrate_saved_security_searches(conn, inspector) -> None:
+    conn.execute(
+        text(
+            """
+            CREATE TABLE IF NOT EXISTS saved_security_searches (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                owner_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                name VARCHAR(80) NOT NULL,
+                filters_json TEXT NOT NULL DEFAULT '{}',
+                created_at DATETIME NOT NULL,
+                CONSTRAINT uq_saved_search_owner_name UNIQUE (owner_user_id, name)
+            )
+            """
+        )
+    )
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_saved_security_searches_id ON saved_security_searches (id)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_saved_security_searches_owner ON saved_security_searches (owner_user_id)"))

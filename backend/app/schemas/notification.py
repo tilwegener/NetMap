@@ -6,7 +6,7 @@ from typing import Any
 from pydantic import BaseModel, Field, field_validator
 
 
-VALID_NOTIFICATION_PROVIDERS = {"apprise", "ntfy", "telegram", "signal", "smtp"}
+VALID_NOTIFICATION_PROVIDERS = {"apprise", "ntfy", "telegram", "signal", "smtp", "webhook"}
 
 
 class NotificationProfileBase(BaseModel):

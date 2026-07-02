@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import {
   type Device,
+  type DeviceLifecycle,
   type DevicePayload,
   type DeviceStatus,
   type DeviceIcon,
@@ -42,6 +43,7 @@ export function DeviceForm({
     os: device?.os ?? cloneSource?.os ?? "",
     device_type: device?.device_type ?? cloneSource?.device_type ?? "",
     status: device?.status ?? cloneSource?.status ?? "unknown",
+    lifecycle: device?.lifecycle ?? cloneSource?.lifecycle ?? "active",
     icon: device?.icon ?? cloneSource?.icon ?? deviceTypeIconMap[device?.device_type ?? cloneSource?.device_type ?? ""] ?? "device",
     color: device?.color ?? cloneSource?.color ?? "",
     vlan_id: device?.vlan_id ?? cloneSource?.vlan_id ?? "",
@@ -52,6 +54,9 @@ export function DeviceForm({
     tags: (device?.tags ?? cloneSource?.tags ?? []).join(", "),
     notes: device?.notes ?? cloneSource?.notes ?? "",
   });
+  const initialType = device?.device_type ?? cloneSource?.device_type ?? "";
+  const [customType, setCustomType] = useState(Boolean(initialType) && !deviceTypeOptions.includes(initialType));
+  const [monitoringPaused, setMonitoringPaused] = useState(device?.monitoring_paused ?? false);
 
   function update(field: keyof typeof form, value: string) {
     setForm((current) => {
@@ -75,6 +80,8 @@ export function DeviceForm({
       os: blankToNull(form.os),
       device_type: selectedDeviceType,
       status: form.status as DeviceStatus,
+      lifecycle: form.lifecycle as DeviceLifecycle,
+      monitoring_paused: monitoringPaused,
       icon: (form.icon || "device") as DeviceIcon,
       color: blankToNull(form.color),
       vlan_id: blankToNull(form.vlan_id),
@@ -137,12 +144,23 @@ export function DeviceForm({
               <div className="modal-form-row">
                 <label>
                   Device type
-                  <select value={form.device_type} onChange={(event) => update("device_type", event.target.value)}>
+                  <select
+                    value={customType ? "__custom__" : form.device_type}
+                    onChange={(event) => {
+                      if (event.target.value === "__custom__") {
+                        setCustomType(true);
+                      } else {
+                        setCustomType(false);
+                        update("device_type", event.target.value);
+                      }
+                    }}
+                  >
                     {deviceTypeOptions.map((type) => (
                       <option key={type} value={type}>
                         {formatDeviceTypeLabel(type)}
                       </option>
                     ))}
+                    <option value="__custom__">Custom…</option>
                   </select>
                 </label>
                 <label>
@@ -153,6 +171,37 @@ export function DeviceForm({
                     <option value="offline">Offline</option>
                     <option value="warning">Warning</option>
                   </select>
+                </label>
+              </div>
+              {customType && (
+                <label>
+                  Custom type name
+                  <input
+                    autoFocus
+                    maxLength={80}
+                    placeholder="e.g. iDRAC, UPS, PDU"
+                    value={form.device_type}
+                    onChange={(event) => update("device_type", event.target.value)}
+                  />
+                </label>
+              )}
+              <div className="modal-form-row">
+                <label>
+                  Lifecycle
+                  <select value={form.lifecycle} onChange={(event) => update("lifecycle", event.target.value)}>
+                    <option value="planned">Planned</option>
+                    <option value="active">Active</option>
+                    <option value="retired">Retired</option>
+                    <option value="ignored">Ignored</option>
+                  </select>
+                </label>
+                <label className="tool-form-inline-check" style={{ alignSelf: "end" }}>
+                  <input
+                    type="checkbox"
+                    checked={monitoringPaused}
+                    onChange={(event) => setMonitoringPaused(event.target.checked)}
+                  />
+                  Pause monitoring
                 </label>
               </div>
             </div>

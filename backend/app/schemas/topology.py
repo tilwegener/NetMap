@@ -8,6 +8,7 @@ from app.core.validation import normalize_cidr, normalize_ip, validate_hostname,
 from app.models.device import DeviceStatus
 
 _ICON_RE = re.compile(r'^[a-z0-9][a-z0-9_-]*$')
+LIFECYCLE_STATES = ("planned", "active", "retired", "ignored")
 
 
 class DeviceBase(BaseModel):
@@ -19,6 +20,8 @@ class DeviceBase(BaseModel):
     os: str | None = Field(default=None, max_length=255)
     device_type: str | None = Field(default=None, max_length=80)
     status: DeviceStatus = DeviceStatus.UNKNOWN
+    lifecycle: str = "active"
+    monitoring_paused: bool = False
     icon: str = Field(default="device", max_length=120)
     color: str | None = Field(default=None, pattern=r"^#[0-9A-Fa-f]{6}$")
     vlan_id: str | None = Field(default=None, max_length=32)
@@ -53,6 +56,14 @@ class DeviceBase(BaseModel):
         if not _ICON_RE.match(value):
             raise ValueError("Icon must start with a letter or digit and contain only letters, digits, hyphens, and underscores")
         return "device" if value == "unknown" else value
+
+    @field_validator("lifecycle")
+    @classmethod
+    def validate_lifecycle(cls, lifecycle: str) -> str:
+        value = lifecycle.strip().lower()
+        if value not in LIFECYCLE_STATES:
+            raise ValueError(f"lifecycle must be one of {LIFECYCLE_STATES}")
+        return value
 
 class DeviceCreate(DeviceBase):
     @field_validator("ip_address")
@@ -115,6 +126,8 @@ class DeviceUpdate(BaseModel):
     os: str | None = Field(default=None, max_length=255)
     device_type: str | None = Field(default=None, max_length=80)
     status: DeviceStatus | None = None
+    lifecycle: str | None = None
+    monitoring_paused: bool | None = None
     icon: str | None = Field(default=None, max_length=40)
     color: str | None = Field(default=None, pattern=r"^#[0-9A-Fa-f]{6}$")
     vlan_id: str | None = Field(default=None, max_length=32)
@@ -139,6 +152,13 @@ class DeviceUpdate(BaseModel):
         if icon is None:
             return None
         return DeviceBase.validate_icon(icon)
+
+    @field_validator("lifecycle")
+    @classmethod
+    def validate_lifecycle(cls, lifecycle: str | None) -> str | None:
+        if lifecycle is None:
+            return None
+        return DeviceBase.validate_lifecycle(lifecycle)
 
     @field_validator("ip_address")
     @classmethod

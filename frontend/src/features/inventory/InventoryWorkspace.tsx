@@ -12,6 +12,7 @@ import { deviceTypeOptions } from "../../constants";
 import { deviceTypeIconMap, iconLabel } from "../../icons";
 import { compareGroupLabels } from "../../utils/sort";
 import { deviceLabel, statusColor, formatDeviceTypeLabel } from "../../utils/format";
+import { isDeviceMonitoringPaused } from "../../utils/device";
 import { ipSortKey } from "../../utils/ip";
 import { compareDevices } from "../../utils/sort";
 import { TopbarNoteCtx } from "../../context";
@@ -52,11 +53,12 @@ export function InventoryWorkspace({
   onToggleFavourite: (deviceId: number) => void;
   openObservationCount?: number;
 }) {
+  type InventoryStatusFilter = "all" | "online" | "offline" | "warning" | "unknown" | "disabled" | "paused";
   const [selectedDeviceId, setSelectedDeviceId] = useState<number | null>(graph.devices[0]?.id ?? null);
   const [selectedDeviceIds, setSelectedDeviceIds] = useState<Set<number>>(new Set());
   const [selectedGroupFilter, setSelectedGroupFilter] = useState('all');
   const [selectedSiteFilter, setSelectedSiteFilter] = useState('all');
-  const [statusFilter, setStatusFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState<InventoryStatusFilter>("all");
   const [favouriteFilter, setFavouriteFilter] = useState(false);
   const [bulkGroupId, setBulkGroupId] = useState('');
   const [bulkDeviceType, setBulkDeviceType] = useState('');
@@ -91,15 +93,19 @@ export function InventoryWorkspace({
     [graph.devices],
   );
   const liveStatusByDeviceId = useMemo<Map<number, DeviceLiveStatus>>(() => new Map(graph.devices.map((device) => {
-    const status = device.status === "disabled" ? "disabled" : (device.monitor_status ?? device.status);
+    const status = device.status === "disabled"
+      ? "disabled"
+      : isDeviceMonitoringPaused(device) || !livePingEnabled
+      ? "paused"
+      : (device.monitor_status ?? device.status);
     return [device.id, {
       device_id: device.id,
-      status,
+      status: status === "paused" ? "unknown" : status,
       latency_ms: null,
       last_checked_at: device.last_monitored_at ?? device.updated_at,
       error: null,
     } satisfies DeviceLiveStatus];
-  })), [graph.devices]);
+  })), [graph.devices, livePingEnabled]);
   const filteredDevices = useMemo(() => {
     let devs = selectedGroupFilter === 'all' ? graph.devices : graph.devices.filter((d) => d.topology_group === selectedGroupFilter);
     if (selectedSiteFilter === 'unassigned') {
@@ -111,7 +117,11 @@ export function InventoryWorkspace({
     if (statusFilter !== 'all') {
       devs = devs.filter((d) => {
         const live = liveStatusByDeviceId.get(d.id);
-        const s = d.status === 'disabled' ? 'disabled' : (live?.status ?? d.monitor_status ?? d.status);
+        const s = d.status === "disabled"
+          ? "disabled"
+          : isDeviceMonitoringPaused(d) || !livePingEnabled
+          ? "paused"
+          : (live?.status ?? d.monitor_status ?? d.status);
         return s === statusFilter;
       });
     }
@@ -129,7 +139,7 @@ export function InventoryWorkspace({
       );
     }
     return devs;
-  }, [graph.devices, selectedGroupFilter, selectedSiteFilter, statusFilter, favouriteFilter, favouriteIds, inventorySearch, liveStatusByDeviceId]);
+  }, [graph.devices, selectedGroupFilter, selectedSiteFilter, statusFilter, favouriteFilter, favouriteIds, inventorySearch, liveStatusByDeviceId, livePingEnabled]);
 
   const sortedDevices = useMemo(() => {
     return filteredDevices.slice().sort((a, b) => {
@@ -455,12 +465,14 @@ export function InventoryWorkspace({
             <select
               className="inv-select"
               value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as "all" | "online" | "offline" | "warning" | "disabled")}
+              onChange={(e) => setStatusFilter(e.target.value as InventoryStatusFilter)}
             >
               <option value="all">All statuses</option>
               <option value="online">Online</option>
               <option value="offline">Offline</option>
               <option value="warning">Warning</option>
+              <option value="unknown">Unknown</option>
+              <option value="paused">Paused</option>
               <option value="disabled">Disabled</option>
             </select>
             <button
@@ -586,7 +598,11 @@ export function InventoryWorkspace({
             ) : (
               paginatedDevices.map((device) => {
                 const liveStatus = livePingEnabled ? (liveStatusByDeviceId.get(device.id) ?? null) : null;
-                const status = device.status === 'disabled' ? 'disabled' : livePingEnabled ? (liveStatus?.status ?? device.monitor_status ?? device.status) : "paused";
+                const status = device.status === "disabled"
+                  ? "disabled"
+                  : isDeviceMonitoringPaused(device) || !livePingEnabled
+                  ? "paused"
+                  : (liveStatus?.status ?? device.monitor_status ?? device.status);
                 return (
                   <button key={device.id} className={device.id === selectedDeviceId ? 'inventory-row active' : 'inventory-row'} type="button" onClick={() => setSelectedDeviceId(device.id)}>
                     <span className="inventory-row-check">
@@ -620,7 +636,7 @@ export function InventoryWorkspace({
                       <DeviceTypeIcon type={device.device_type} size={13} />
                       {device.device_type ? formatDeviceTypeLabel(device.device_type) : iconLabel(device.icon)}
                     </span>
-                    <span className={`status-pill ${status}`}>{status === "paused" ? "polling off" : status}</span>
+                    <span className={`status-pill ${status}`}>{status === "paused" ? "paused" : status}</span>
                     <span>{livePingEnabled && liveStatus?.latency_ms != null ? `${liveStatus.latency_ms.toFixed(1)} ms` : '—'}</span>
                     <span>
                       {canWrite ? (

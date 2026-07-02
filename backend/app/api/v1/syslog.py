@@ -13,10 +13,17 @@ from app.core.config import settings
 from app.core.security import decode_token
 from app.core.validation import normalize_ip, validate_port, validate_syslog_field
 from app.db.firewall_session import FirewallSessionLocal, get_firewall_db
-from app.db.session import SessionLocal
+from app.db.session import SessionLocal, get_db
 from app.models.firewall_event import FirewallEvent
+from app.models.saved_search import SavedSecuritySearch
 from app.models.user import User
-from app.schemas.firewall_event import FirewallEventList, FirewallEventRead, SyslogStatus
+from app.schemas.firewall_event import (
+    FirewallEventList,
+    FirewallEventRead,
+    SavedSearchCreate,
+    SavedSearchRead,
+    SyslogStatus,
+)
 from app.services.rbac.permissions import has_permission
 from app.services.syslog.storage import count_events, get_ingestion_status, get_retention_status
 from app.websocket.firewall_events import firewall_event_broadcaster
@@ -154,6 +161,66 @@ def list_firewall_events(
         limit=limit,
         events=[event_to_read(event) for event in events],
     )
+
+
+def _saved_search_to_read(row: SavedSecuritySearch) -> SavedSearchRead:
+    import json as _json
+    try:
+        filters = _json.loads(row.filters_json or "{}")
+    except ValueError:
+        filters = {}
+    return SavedSearchRead(id=row.id, name=row.name, filters=filters if isinstance(filters, dict) else {}, created_at=row.created_at)
+
+
+@router.get("/searches", response_model=list[SavedSearchRead])
+def list_saved_searches(
+    current_user: Annotated[User, Depends(require_security_view)],
+    db: Annotated[Session, Depends(get_db)],
+) -> list[SavedSearchRead]:
+    rows = db.scalars(
+        select(SavedSecuritySearch)
+        .where(SavedSecuritySearch.owner_user_id == current_user.id)
+        .order_by(SavedSecuritySearch.name)
+    ).all()
+    return [_saved_search_to_read(row) for row in rows]
+
+
+@router.post("/searches", response_model=SavedSearchRead, status_code=status.HTTP_201_CREATED)
+def create_saved_search(
+    payload: SavedSearchCreate,
+    current_user: Annotated[User, Depends(require_security_view)],
+    db: Annotated[Session, Depends(get_db)],
+) -> SavedSearchRead:
+    import json as _json
+    name = payload.name.strip()
+    existing = db.scalar(select(SavedSecuritySearch).where(
+        SavedSecuritySearch.owner_user_id == current_user.id,
+        SavedSecuritySearch.name == name,
+    ))
+    filters_json = _json.dumps(payload.filters, separators=(",", ":"))
+    if existing:
+        existing.filters_json = filters_json  # same name overwrites — save is idempotent
+        db.commit()
+        db.refresh(existing)
+        return _saved_search_to_read(existing)
+    row = SavedSecuritySearch(owner_user_id=current_user.id, name=name, filters_json=filters_json)
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return _saved_search_to_read(row)
+
+
+@router.delete("/searches/{search_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_saved_search(
+    search_id: int,
+    current_user: Annotated[User, Depends(require_security_view)],
+    db: Annotated[Session, Depends(get_db)],
+) -> None:
+    row = db.get(SavedSecuritySearch, search_id)
+    if not row or row.owner_user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Saved search not found")
+    db.delete(row)
+    db.commit()
 
 
 @router.websocket("/events/live")

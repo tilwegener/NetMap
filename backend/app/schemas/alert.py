@@ -1,9 +1,9 @@
 import json
 import re
 from datetime import datetime
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
-VALID_EVENT_TYPES = {"device_offline", "device_online", "device_warning", "any_status_change"}
+VALID_EVENT_TYPES = {"device_offline", "device_online", "device_warning", "any_status_change", "rtt_above", "device_flapping"}
 VALID_CHANNELS = {"smtp", "ntfy", "telegram", "signal"}
 PROFILE_TARGET_RE = re.compile(r"^profile:[1-9][0-9]*$")
 
@@ -15,6 +15,7 @@ class AlertRuleCreate(BaseModel):
     device_id: int | None = None
     channels: list[str] = Field(default_factory=list)
     cooldown_minutes: int = Field(default=30, ge=1, le=1440)
+    threshold_ms: int | None = Field(default=None, ge=1, le=60000)
 
     @field_validator("event_type")
     @classmethod
@@ -22,6 +23,12 @@ class AlertRuleCreate(BaseModel):
         if v not in VALID_EVENT_TYPES:
             raise ValueError(f"event_type must be one of {sorted(VALID_EVENT_TYPES)}")
         return v
+
+    @model_validator(mode="after")
+    def require_threshold_for_rtt(self) -> "AlertRuleCreate":
+        if self.event_type == "rtt_above" and self.threshold_ms is None:
+            raise ValueError("threshold_ms is required for rtt_above rules")
+        return self
 
     @field_validator("channels")
     @classmethod
@@ -39,6 +46,7 @@ class AlertRuleUpdate(BaseModel):
     device_id: int | None = None
     channels: list[str] | None = None
     cooldown_minutes: int | None = Field(None, ge=1, le=1440)
+    threshold_ms: int | None = Field(None, ge=1, le=60000)
 
     @field_validator("event_type")
     @classmethod
@@ -66,6 +74,7 @@ class AlertRuleRead(BaseModel):
     device_id: int | None
     channels: list[str]
     cooldown_minutes: int
+    threshold_ms: int | None
     last_triggered_at: datetime | None
     created_at: datetime
     updated_at: datetime
@@ -88,5 +97,17 @@ class AlertEventRead(BaseModel):
     event_type: str
     fired_at: datetime
     message: str
+
+    model_config = {"from_attributes": True}
+
+
+class NotificationDeliveryRead(BaseModel):
+    id: int
+    rule_name: str
+    device_id: int | None
+    target: str
+    status: str
+    detail: str
+    sent_at: datetime
 
     model_config = {"from_attributes": True}

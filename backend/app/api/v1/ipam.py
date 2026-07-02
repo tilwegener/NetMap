@@ -395,6 +395,47 @@ def subnet_addresses(
     ]
 
 
+@router.get("/subnets/{subnet_id}/next-available", response_model=dict)
+def next_available_ip(
+    subnet_id: int,
+    _current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> dict:
+    subnet = db.get(Subnet, subnet_id)
+    if not subnet:
+        raise HTTPException(status_code=404, detail="Subnet not found")
+    try:
+        net = ipaddress.ip_network(subnet.cidr, strict=False)
+    except ValueError:
+        raise HTTPException(status_code=422, detail=f"Invalid subnet CIDR: {subnet.cidr}")
+
+    used = _parse_ip_set(_device_ips(db) | _dhcp_ips(db) | _reserved_ips(db))
+    gateway = None
+    if subnet.gateway:
+        try:
+            gateway = ipaddress.ip_address(subnet.gateway)
+        except ValueError:
+            gateway = None
+    dhcp_bounds: tuple[int, int] | None = None
+    if subnet.dhcp_start and subnet.dhcp_end:
+        try:
+            dhcp_bounds = (int(ipaddress.ip_address(subnet.dhcp_start)), int(ipaddress.ip_address(subnet.dhcp_end)))
+        except ValueError:
+            dhcp_bounds = None
+
+    # ponytail: linear scan capped at 65536 hosts — the first free IP is almost
+    # always near the start; a full bitmap only matters for pathological /8s.
+    for index, candidate in enumerate(net.hosts()):
+        if index >= 65536:
+            break
+        if candidate in used or candidate == gateway:
+            continue
+        if dhcp_bounds and dhcp_bounds[0] <= int(candidate) <= dhcp_bounds[1]:
+            continue
+        return {"ip": str(candidate)}
+    raise HTTPException(status_code=409, detail="No free IP available in this subnet (outside the DHCP pool)")
+
+
 # ── VLAN import ──────────────────────────────────────────────────────────────
 
 @router.get("/vlan-suggestions", response_model=list[VlanSuggestion])
@@ -488,6 +529,21 @@ def list_reservations(
     db: Annotated[Session, Depends(get_db)],
 ) -> list[IpReservationOut]:
     return list(db.scalars(select(IpReservation).order_by(IpReservation.ip_address)).all())
+
+
+@router.delete("/reservations/expired", response_model=dict)
+def delete_expired_reservations(
+    current_user: Annotated[User, Depends(require_ipam_write)],
+    db: Annotated[Session, Depends(get_db)],
+) -> dict:
+    now = datetime.now(timezone.utc)
+    expired = db.scalars(
+        select(IpReservation).where(IpReservation.expires_at.isnot(None), IpReservation.expires_at < now)
+    ).all()
+    for reservation in expired:
+        db.delete(reservation)
+    db.commit()
+    return {"deleted": len(expired)}
 
 
 @router.post("/reservations", response_model=IpReservationOut, status_code=201)

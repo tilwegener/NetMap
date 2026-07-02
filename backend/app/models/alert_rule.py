@@ -14,6 +14,8 @@ class AlertRule(Base):
     device_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     channels: Mapped[str] = mapped_column(Text, default="[]", nullable=False)  # JSON array
     cooldown_minutes: Mapped[int] = mapped_column(Integer, default=30, nullable=False)
+    # rtt_above rules only: fire when a device's probe RTT exceeds this many ms
+    threshold_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     last_triggered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

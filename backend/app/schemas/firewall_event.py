@@ -58,3 +58,15 @@ class SyslogStatus(BaseModel):
     last_drop_raw: str | None = None
     last_denied_at: datetime | None = None
     last_denied_sender: str | None = None
+
+
+class SavedSearchCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    filters: dict = Field(default_factory=dict)
+
+
+class SavedSearchRead(BaseModel):
+    id: int
+    name: str
+    filters: dict
+    created_at: datetime

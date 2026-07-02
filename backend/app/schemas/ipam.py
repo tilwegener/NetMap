@@ -92,6 +92,7 @@ class IpReservationCreate(BaseModel):
     label: str = Field(..., min_length=1, max_length=120)
     mac_address: str | None = None
     notes: str | None = None
+    expires_at: datetime | None = None
 
 
 class IpReservationUpdate(BaseModel):
@@ -99,6 +100,7 @@ class IpReservationUpdate(BaseModel):
     subnet_id: int | None = None
     mac_address: str | None = None
     notes: str | None = None
+    expires_at: datetime | None = None
 
 
 class IpReservationOut(BaseModel):
@@ -109,6 +111,7 @@ class IpReservationOut(BaseModel):
     mac_address: str | None
     notes: str | None
     reserved_by: str | None
+    expires_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
 

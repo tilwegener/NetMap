@@ -10,7 +10,14 @@ from app.db.session import get_db
 from app.models.alert_event import AlertEvent
 from app.models.alert_rule import AlertRule
 from app.models.device import Device
-from app.schemas.alert import AlertEventRead, AlertRuleCreate, AlertRuleRead, AlertRuleUpdate
+from app.models.notification_delivery import NotificationDelivery
+from app.schemas.alert import (
+    AlertEventRead,
+    AlertRuleCreate,
+    AlertRuleRead,
+    AlertRuleUpdate,
+    NotificationDeliveryRead,
+)
 from app.models.user import User
 from app.services.alerting.service import AlertMonitorService
 from app.services.notifications import (
@@ -51,6 +58,7 @@ def create_rule(
         device_id=payload.device_id,
         channels=json.dumps(payload.channels),
         cooldown_minutes=payload.cooldown_minutes,
+        threshold_ms=payload.threshold_ms,
     )
     db.add(rule)
     db.commit()
@@ -76,6 +84,8 @@ def update_rule(
             raise HTTPException(status_code=404, detail="Device not found")
     for key, value in updates.items():
         setattr(rule, key, value)
+    if rule.event_type == "rtt_above" and rule.threshold_ms is None:
+        raise HTTPException(status_code=422, detail="threshold_ms is required for rtt_above rules")
     db.commit()
     db.refresh(rule)
     return _to_read(rule)
@@ -134,9 +144,15 @@ def test_rule(
         "device_online": "online",
         "device_warning": "warning",
         "any_status_change": "offline",
+        "rtt_above": "online",
+        "device_flapping": "online",
     }
     status = event_status_map.get(rule.event_type, "unknown")
-    body = AlertMonitorService._build_message(rule.event_type, label, ip, status, app_name)
+    threshold = rule.threshold_ms or 100
+    body = AlertMonitorService._build_message(
+        rule.event_type, label, ip, status, app_name,
+        rtt_ms=float(threshold) + 25, threshold_ms=threshold, flap_count=5,
+    )
     message = f"[TEST] {body}"
 
     results: dict[str, str] = {}
@@ -144,6 +160,16 @@ def test_rule(
         results[channel] = send_notification_target(channel, message, notif_settings, profiles)
 
     return results
+
+
+@router.get("/deliveries", response_model=list[NotificationDeliveryRead])
+def list_deliveries(
+    _current_user: Annotated[User, Depends(require_alert_write)],
+    db: Annotated[Session, Depends(get_db)],
+    limit: int = 100,
+) -> list[NotificationDeliveryRead]:
+    q = select(NotificationDelivery).order_by(NotificationDelivery.sent_at.desc(), NotificationDelivery.id.desc()).limit(min(limit, 500))
+    return list(db.scalars(q))
 
 
 @router.get("/events", response_model=list[AlertEventRead])

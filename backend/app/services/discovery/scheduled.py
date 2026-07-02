@@ -201,7 +201,36 @@ def create_observations_for_scan(
     current_hosts = annotate_hosts_with_inventory(deserialize_results(scan.results_json), db)
     observations: list[DiscoveryObservation] = []
 
+    # MAC → device lookup to catch hosts whose IP already belongs to a different device
+    scan_macs = {normalize_mac(host.mac_address) for host in current_hosts if normalize_mac(host.mac_address)}
+    devices_by_mac: dict[str, Device] = {}
+    if scan_macs:
+        for candidate in db.scalars(select(Device).where(Device.mac_address.is_not(None))).all():
+            normalized = normalize_mac(candidate.mac_address)
+            if normalized in scan_macs and normalized not in devices_by_mac:
+                devices_by_mac[normalized] = candidate
+
     for host in current_hosts:
+        mac_device = devices_by_mac.get(normalize_mac(host.mac_address) or "")
+        if (
+            host.existing_device_id is not None
+            and mac_device is not None
+            and mac_device.id != host.existing_device_id
+        ):
+            # MAC says this is mac_device, but the found IP belongs to another inventory
+            # device — an IP move onto an occupied address is flagged for review, never applied.
+            host.existing_device_id = mac_device.id
+            observations.append(_upsert_observation(
+                db,
+                schedule.id,
+                scan.id,
+                "ip_change",
+                host,
+                f"Device may have moved to {host.ip_address}, an IP already used by another device",
+                {"current_ip": mac_device.ip_address, "found_ip": host.ip_address},
+                now,
+            ))
+            continue
         if host.import_status == "new":
             observations.append(_upsert_observation(
                 db,
@@ -214,16 +243,38 @@ def create_observations_for_scan(
                 now,
             ))
         elif host.import_status == "changed" and "ip_address" in host.proposed_updates:
-            observations.append(_upsert_observation(
-                db,
-                schedule.id,
-                scan.id,
-                "ip_change",
-                host,
-                f"Device appears to have moved to {host.ip_address}",
-                {"proposed_updates": {f: getattr(host, f) for f in host.proposed_updates if getattr(host, f) is not None}},
-                now,
-            ))
+            device = db.get(Device, host.existing_device_id)
+            if device is not None:
+                old_ip = device.ip_address
+                device.ip_address = host.ip_address
+                write_audit(
+                    db,
+                    action="discovery.auto_ip_update",
+                    actor_user_id=schedule.owner_user_id,
+                    target=f"device:{device.id}",
+                    detail=f"IP updated {old_ip} → {host.ip_address} (MAC match, scheduled scan)",
+                )
+            for stale in db.scalars(
+                select(DiscoveryObservation).where(
+                    DiscoveryObservation.schedule_id == schedule.id,
+                    DiscoveryObservation.device_id == host.existing_device_id,
+                    DiscoveryObservation.observation_type == "ip_change",
+                    DiscoveryObservation.status != "resolved",
+                )
+            ).all():
+                stale.status = "resolved"
+            other_updates = [f for f in host.proposed_updates if f != "ip_address"]
+            if other_updates:
+                observations.append(_upsert_observation(
+                    db,
+                    schedule.id,
+                    scan.id,
+                    "field_change",
+                    host,
+                    f"Device details changed at {host.ip_address}",
+                    {"proposed_updates": {f: getattr(host, f) for f in other_updates if getattr(host, f) is not None}},
+                    now,
+                ))
         elif host.import_status == "changed":
             observations.append(_upsert_observation(
                 db,

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useContext } from "react";
 import { Search, Pause, Play, ChevronDown, ChevronRight } from "lucide-react";
-import { api, type FirewallEvent, type FirewallEventList, type SyslogStatus, type Device, type TopologyGraph } from "../../api/client";
+import { api, type FirewallEvent, type FirewallEventList, type SavedSecuritySearch, type SyslogStatus, type Device, type TopologyGraph } from "../../api/client";
 import { TopbarNoteCtx } from "../../context";
 import { type SecurityFilters, emptySecurityFilters } from "../../types";
 import { buildFirewallEventsWsUrl, buildSearchParams, eventMatchesFilters, relatedDevicesForEvent } from "../../utils/security";
@@ -30,9 +30,47 @@ export function SecurityWorkspace({
   const [autoScroll, setAutoScroll] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [savedSearches, setSavedSearches] = useState<SavedSecuritySearch[]>([]);
+  const [selectedSearchId, setSelectedSearchId] = useState<number | "">("");
   const tableRef = useRef<HTMLDivElement | null>(null);
   const setTopbarNote = useContext(TopbarNoteCtx);
   const pageSize = 100;
+
+  useEffect(() => {
+    if (!accessToken) return;
+    api.listSavedSecuritySearches(accessToken).then(setSavedSearches).catch(() => { /* non-critical */ });
+  }, [accessToken]);
+
+  async function saveCurrentSearch() {
+    if (!accessToken) return;
+    const name = prompt("Name this search:", "");
+    if (!name?.trim()) return;
+    try {
+      await api.createSavedSecuritySearch(accessToken, name.trim(), draftFilters as unknown as Record<string, unknown>);
+      setSavedSearches(await api.listSavedSecuritySearches(accessToken));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save search");
+    }
+  }
+
+  function applySavedSearch(id: number) {
+    const saved = savedSearches.find((s) => s.id === id);
+    if (!saved) return;
+    const next = { ...emptySecurityFilters, ...(saved.filters as Partial<SecurityFilters>) };
+    setSelectedSearchId(id);
+    setDraftFilters(next);
+    setFilters(next);
+    setOffset(0);
+  }
+
+  async function deleteSelectedSearch() {
+    if (!accessToken || selectedSearchId === "") return;
+    if (!confirm("Delete this saved search?")) return;
+    await api.deleteSavedSecuritySearch(accessToken, selectedSearchId);
+    setSelectedSearchId("");
+    setSavedSearches(await api.listSavedSecuritySearches(accessToken));
+  }
+
   const devicesByIp = useMemo(() => {
     const mapping = new Map<string, Device[]>();
     graph.devices.forEach((device) => {
@@ -239,9 +277,33 @@ export function SecurityWorkspace({
               <Search size={15} aria-hidden="true" />
               Search
             </button>
-            <button className="clear-filters" type="button" onClick={() => { setOffset(0); setDraftFilters(emptySecurityFilters); setFilters(emptySecurityFilters); }}>
+            <button className="clear-filters" type="button" onClick={() => { setOffset(0); setSelectedSearchId(""); setDraftFilters(emptySecurityFilters); setFilters(emptySecurityFilters); }}>
               Clear filters
             </button>
+          </div>
+          <div className="security-saved-searches">
+            <select
+              className="toolbar-select"
+              value={selectedSearchId === "" ? "" : String(selectedSearchId)}
+              onChange={(event) => {
+                if (!event.target.value) { setSelectedSearchId(""); return; }
+                applySavedSearch(Number(event.target.value));
+              }}
+              title="Apply a saved search"
+            >
+              <option value="">Saved searches…</option>
+              {savedSearches.map((s) => (
+                <option key={s.id} value={String(s.id)}>{s.name}</option>
+              ))}
+            </select>
+            <button type="button" className="clear-filters" onClick={() => void saveCurrentSearch()} title="Save the current filters as a named search">
+              Save search
+            </button>
+            {selectedSearchId !== "" && (
+              <button type="button" className="clear-filters" onClick={() => void deleteSelectedSearch()} title="Delete the selected saved search">
+                Delete
+              </button>
+            )}
           </div>
         </form>
         <div className="security-results">

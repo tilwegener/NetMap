@@ -87,12 +87,13 @@ export function estimateGroupCenter(
   return { x: total.x / points.length, y: total.y / points.length };
 }
 
-export function statusColor(status: DeviceStatus) {
-  return {
+export function statusColor(status: DeviceStatus | "paused" | string) {
+  return ({
     online:   "#2d9d78",
     offline:  "#8a96a3",
     warning:  "#d99a22",
     unknown:  "#5b7c91",
     disabled: "#9aabb6",
-  }[status];
+    paused:   "#9aabb6",
+  } as Record<string, string>)[status] ?? "#5b7c91";
 }

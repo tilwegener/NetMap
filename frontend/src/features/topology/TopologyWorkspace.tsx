@@ -19,6 +19,7 @@ import {
 } from "../../utils/topology";
 import { compareGroupLabels } from "../../utils/sort";
 import { deviceLabel, statusColor } from "../../utils/format";
+import { isDeviceMonitoringPaused } from "../../utils/device";
 import { deviceIconUrl, deviceIconPath, resolveDeviceIcon } from "../../icons";
 import { downloadDataUrl, downloadTextFile, buildTopologySvg, topologySvgDimensions, edgeClippedEndpoints } from "../../utils/download";
 import { relationshipVisualSourceNodeId, relationshipVisualTargetNodeId } from "../../utils/relationship";
@@ -452,7 +453,9 @@ export function TopologyWorkspace({
         const position = node.renderedPosition();
         const label = deviceLabel(device);
         const nodeScale = Math.max(0.7, Math.min(2.2, Number(node.data("nodeScale") ?? 1)));
-        const liveStatus = livePingEnabled ? (liveStatusByDeviceId.get(device.id)?.status ?? device.monitor_status ?? device.status) : "paused";
+        const liveStatus = isDeviceMonitoringPaused(device) || !livePingEnabled
+          ? "paused"
+          : (liveStatusByDeviceId.get(device.id)?.status ?? device.monitor_status ?? device.status);
         const colorStatus = liveStatus === "paused" ? "unknown" : liveStatus;
         const color = device.color || statusColor(colorStatus);
         return {
@@ -888,7 +891,9 @@ export function TopologyWorkspace({
         },
       })),
       ...filteredGraph.devices.map((device) => {
-        const liveStatus = livePingEnabled ? (liveStatusByDeviceId.get(device.id)?.status ?? device.monitor_status ?? "unknown") : "paused";
+        const liveStatus = isDeviceMonitoringPaused(device) || !livePingEnabled
+          ? "paused"
+          : (liveStatusByDeviceId.get(device.id)?.status ?? device.monitor_status ?? "unknown");
         const colorStatus = liveStatus === "paused" ? "unknown" : liveStatus;
         const nodeColor = device.color || statusColor(colorStatus);
         const nodeScale = (groupDisplayPrefs[device.topology_group]?.nodeScalePercent ?? 140) / 100;
@@ -1033,13 +1038,18 @@ export function TopologyWorkspace({
       ip_address: payload.ip_address ?? "",
       mac_address: payload.mac_address,
       vendor: payload.vendor,
+      os: payload.os,
       device_type: payload.device_type,
       status: payload.status,
+      lifecycle: payload.lifecycle ?? "active",
+      monitoring_paused: payload.monitoring_paused ?? false,
       icon: payload.icon,
       color: payload.color,
       vlan_id: payload.vlan_id,
       subnet: payload.subnet,
       topology_group_id: payload.topology_group_id,
+      site_id: payload.site_id,
+      snmp_profile_id: payload.snmp_profile_id,
       tags: payload.tags,
       notes: payload.notes,
     };
@@ -1054,13 +1064,18 @@ export function TopologyWorkspace({
               ip_address: payload.ip_address ?? "",
               mac_address: payload.mac_address,
               vendor: payload.vendor,
+              os: payload.os,
               device_type: payload.device_type,
               status: payload.status,
+              lifecycle: payload.lifecycle ?? "active",
+              monitoring_paused: payload.monitoring_paused ?? false,
               icon: payload.icon,
               color: payload.color,
               vlan_id: payload.vlan_id,
               subnet: payload.subnet,
               topology_group_id: payload.topology_group_id,
+              site_id: payload.site_id,
+              snmp_profile_id: payload.snmp_profile_id,
               topology_group: current.devices.find((row) => row.id === deviceId)?.topology_group ?? device.topology_group,
               tags: payload.tags,
               notes: payload.notes,
@@ -1070,17 +1085,20 @@ export function TopologyWorkspace({
     }));
     try {
       const updated = await api.updateDevice(accessToken, deviceId, payload);
+      delete pendingDevicePatchesRef.current[updated.id];
       setLiveGraph((current) => ({
         ...current,
         devices: current.devices.map((device) =>
           device.id === updated.id
-            ? { ...updated, ...pendingDevicePatchesRef.current[updated.id] }
+            ? updated
             : device,
         ),
       }));
       void onGraphChange();
     } catch (err) {
+      delete pendingDevicePatchesRef.current[deviceId];
       setTopologyError(err instanceof Error ? err.message : "Unable to update device");
+      void onGraphChange();
     } finally {
       setBusy(false);
     }
@@ -1709,7 +1727,11 @@ export function TopologyWorkspace({
                 ? <p className="topo-entity-empty">{entitySearch ? "No devices match" : "No devices"}</p>
                 : filteredEntityDevices.map((device) => {
                     const liveStatus = livePingEnabled ? liveStatusByDeviceId.get(device.id) : null;
-                    const dotStatus = device.status === "disabled" ? "disabled" : livePingEnabled ? (liveStatus?.status ?? device.monitor_status ?? device.status) : "paused";
+                    const dotStatus = device.status === "disabled"
+                      ? "disabled"
+                      : isDeviceMonitoringPaused(device) || !livePingEnabled
+                      ? "paused"
+                      : (liveStatus?.status ?? device.monitor_status ?? device.status);
                     return (
                       <button
                         key={device.id}

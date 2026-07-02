@@ -8,7 +8,7 @@ import {
   api,
   type User, type SyslogStatus, type SystemSettings, type NotificationSettings,
   type NotificationProfile,
-  type AlertRule, type AlertRulePayload, type AlertRuleEventType,
+  type AlertRule, type AlertRulePayload, type AlertRuleEventType, type NotificationDelivery,
   type RolePermissions, type VersionInfo, type SystemDiagnostics,
   type DashboardSummary, type TopologyGraph, type AuditLog, type SnmpProfile,
   type DiscoverySchedule, type DiscoveryObservation, type DiscoverySchedulePayload,
@@ -56,6 +56,7 @@ const notificationMethodCatalog = [
   { id: "gotify", label: "Gotify", description: "Self-hosted Gotify app notifications" },
   { id: "pushover", label: "Pushover", description: "Pushover user/app notifications" },
   { id: "google_chat", label: "Google Chat", description: "Google Chat incoming webhook alerts" },
+  { id: "webhook", label: "Generic webhook", description: "POST a JSON payload to any HTTP(S) endpoint" },
   { id: "custom", label: "Custom Apprise URL", description: "Any Apprise-supported notification service" },
 ] as const;
 
@@ -99,6 +100,8 @@ type NotificationProfileForm = {
   google_chat_workspace: string;
   google_chat_key: string;
   google_chat_token: string;
+  webhook_url: string;
+  webhook_token: string;
   custom_url: string;
 };
 
@@ -134,6 +137,8 @@ const emptyProfileForm: NotificationProfileForm = {
   google_chat_workspace: "",
   google_chat_key: "",
   google_chat_token: "",
+  webhook_url: "",
+  webhook_token: "",
   custom_url: "",
 };
 
@@ -166,8 +171,8 @@ function buildAppriseUrl(form: NotificationProfileForm): string {
   }
 }
 
-function providerForMethod(method: NotificationMethodId): "apprise" | "ntfy" | "telegram" | "signal" | "smtp" {
-  if (method === "ntfy" || method === "telegram" || method === "signal" || method === "smtp") {
+function providerForMethod(method: NotificationMethodId): "apprise" | "ntfy" | "telegram" | "signal" | "smtp" | "webhook" {
+  if (method === "ntfy" || method === "telegram" || method === "signal" || method === "smtp" || method === "webhook") {
     return method;
   }
   return "apprise";
@@ -196,6 +201,9 @@ function buildNotificationConfig(form: NotificationProfileForm): Record<string, 
       method_label: "Email (SMTP)",
     };
   }
+  if (form.method === "webhook") {
+    return { webhook_url: form.webhook_url.trim(), webhook_token: form.webhook_token, method: form.method, method_label: "Generic webhook" };
+  }
   const method = notificationMethodCatalog.find((item) => item.id === form.method);
   return {
     url: buildAppriseUrl(form),
@@ -216,6 +224,7 @@ function profileFormIsComplete(form: NotificationProfileForm): boolean {
   if (form.method === "gotify") return !!form.gotify_base_url.trim() && !!form.gotify_token.trim();
   if (form.method === "pushover") return !!form.pushover_user_key.trim() && !!form.pushover_app_token.trim();
   if (form.method === "google_chat") return !!form.google_chat_workspace.trim() && !!form.google_chat_key.trim() && !!form.google_chat_token.trim();
+  if (form.method === "webhook") return !!form.webhook_url.trim();
   return !!form.custom_url.trim();
 }
 
@@ -241,6 +250,8 @@ function populateFormFromProfile(profile: NotificationProfile): NotificationProf
         smtp_to: cfg.smtp_to ?? "",
         smtp_tls: cfg.smtp_tls !== "false",
       };
+    case "webhook":
+      return { ...base, webhook_url: cfg.webhook_url ?? "", webhook_token: cfg.webhook_token ?? "" };
     default:
       return { ...base, title: cfg.title ?? "NetMap" };
   }
@@ -313,6 +324,7 @@ export function AdminWorkspace({
   const [editingProfileId, setEditingProfileId] = useState<number | null>(null);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [alertRules, setAlertRules] = useState<AlertRule[]>([]);
+  const [deliveries, setDeliveries] = useState<NotificationDelivery[]>([]);
   const [alertRulesBusy, setAlertRulesBusy] = useState(false);
   const [alertRulesError, setAlertRulesError] = useState<string | null>(null);
   const [alertTestResults, setAlertTestResults] = useState<Record<number, Record<string, string>>>({});
@@ -326,6 +338,7 @@ export function AdminWorkspace({
     device_id: null,
     channels: [],
     cooldown_minutes: 30,
+    threshold_ms: null,
   });
   const [rolePermissions, setRolePermissions] = useState<RolePermissions | null>(null);
   const [localRolePerms, setLocalRolePerms] = useState<Record<string, string[]>>({});
@@ -394,6 +407,7 @@ export function AdminWorkspace({
     if (activeTab !== "alerts") return;
     void loadAlertRules();
     void loadNotificationProfiles();
+    void api.listNotificationDeliveries(accessToken).then(setDeliveries).catch(() => {});
   }, [activeTab]);
   useEffect(() => {
     if (activeTab !== "groups") return;
@@ -1741,6 +1755,19 @@ export function AdminWorkspace({
                 </label>
               </>
             )}
+            {profileForm.method === "webhook" && (
+              <>
+                <label>
+                  Webhook URL
+                  <input required placeholder="https://example.com/netmap-alerts" value={profileForm.webhook_url} onChange={(e) => setProfileForm((c) => ({ ...c, webhook_url: e.target.value }))} />
+                </label>
+                <label>
+                  Bearer token (optional)
+                  <input type="password" value={profileForm.webhook_token} onChange={(e) => setProfileForm((c) => ({ ...c, webhook_token: e.target.value }))} />
+                </label>
+                <p className="tool-note">{'NetMap sends a POST request with the JSON body {"title": "NetMap", "message": "…"}.'}</p>
+              </>
+            )}
             {profileForm.method === "custom" && (
               <label>
                 Apprise URL
@@ -1766,7 +1793,7 @@ export function AdminWorkspace({
               <div className="admin-panel-actions">
                 <button type="button" className="nm-btn nm-btn--primary" onClick={() => {
                   setEditingAlertRule(null);
-                  setAlertForm({ name: "", enabled: true, event_type: "device_offline", device_id: null, channels: [], cooldown_minutes: 30 });
+                  setAlertForm({ name: "", enabled: true, event_type: "device_offline", device_id: null, channels: [], cooldown_minutes: 30, threshold_ms: null });
                   setShowAlertForm(true);
                 }}>+ Add rule</button>
               </div>
@@ -1785,8 +1812,16 @@ export function AdminWorkspace({
                     <option value="device_online">Device comes back online</option>
                     <option value="device_warning">Device status becomes Warning</option>
                     <option value="any_status_change">Any status change</option>
+                    <option value="rtt_above">Response time above threshold</option>
+                    <option value="device_flapping">Device is flapping (repeated status changes)</option>
                   </select>
                 </label>
+                {alertForm.event_type === "rtt_above" && (
+                  <label>RTT threshold (ms)
+                    <input type="number" min={1} max={60000} value={alertForm.threshold_ms ?? ""} placeholder="e.g. 200"
+                      onChange={(e) => setAlertForm(f => ({...f, threshold_ms: e.target.value ? Number(e.target.value) : null}))} />
+                  </label>
+                )}
                 <label>Device
                   <select value={alertForm.device_id ?? ""} onChange={(e) => setAlertForm(f => ({...f, device_id: e.target.value ? Number(e.target.value) : null}))}>
                     <option value="">All devices</option>
@@ -1839,7 +1874,7 @@ export function AdminWorkspace({
                   Enabled
                 </label>
                 <div className="ipam-form-actions">
-                  <button type="button" className="nm-btn nm-btn--primary" disabled={alertRulesBusy || !alertForm.name || alertForm.channels.length === 0} onClick={() => void saveAlertRule()}>
+                  <button type="button" className="nm-btn nm-btn--primary" disabled={alertRulesBusy || !alertForm.name || alertForm.channels.length === 0 || (alertForm.event_type === "rtt_above" && !alertForm.threshold_ms)} onClick={() => void saveAlertRule()}>
                     {alertRulesBusy ? "Saving…" : editingAlertRule ? "Update rule" : "Create rule"}
                   </button>
                   <button type="button" className="nm-btn" onClick={() => { setShowAlertForm(false); setEditingAlertRule(null); }}>Cancel</button>
@@ -1869,6 +1904,8 @@ export function AdminWorkspace({
                       device_online: "Comes online",
                       device_warning: "Warning status",
                       any_status_change: "Any status change",
+                      rtt_above: rule.threshold_ms ? `RTT above ${rule.threshold_ms} ms` : "RTT above threshold",
+                      device_flapping: "Flapping",
                     };
                     const deviceName = rule.device_id
                       ? (() => { const d = graph.devices.find(x => x.id === rule.device_id); return d ? (d.display_name || d.hostname || d.ip_address) : `#${rule.device_id}`; })()
@@ -1896,7 +1933,7 @@ export function AdminWorkspace({
                             </button>
                             <button type="button" className="admin-action-btn" onClick={() => {
                               setEditingAlertRule(rule);
-                              setAlertForm({ name: rule.name, enabled: rule.enabled, event_type: rule.event_type, device_id: rule.device_id, channels: rule.channels, cooldown_minutes: rule.cooldown_minutes });
+                              setAlertForm({ name: rule.name, enabled: rule.enabled, event_type: rule.event_type, device_id: rule.device_id, channels: rule.channels, cooldown_minutes: rule.cooldown_minutes, threshold_ms: rule.threshold_ms });
                               setShowAlertForm(true);
                             }}>Edit</button>
                             <button type="button" className="admin-action-btn admin-action-btn--danger" onClick={() => void deleteAlertRule(rule.id)}>Delete</button>
@@ -1914,6 +1951,41 @@ export function AdminWorkspace({
                       </tr>
                     );
                   })}
+                </tbody>
+              </table>
+            )}
+          </section>
+
+          <section className="panel admin-panel">
+            <div className="admin-panel-header">
+              <h2 className="admin-section-title"><IconAlertCircle size={16} />Delivery history</h2>
+            </div>
+            <p className="tool-note">The most recent alert notification attempts and whether each provider accepted them. Kept for 30 days.</p>
+            {deliveries.length === 0 ? (
+              <p className="tool-note">No notifications have been sent yet.</p>
+            ) : (
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <thead>
+                  <tr style={{ borderBottom: '2px solid rgba(175,198,216,0.5)', textAlign: 'left' }}>
+                    <th style={{ padding: '8px 10px', fontWeight: 700, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#7a96a8' }}>Sent</th>
+                    <th style={{ padding: '8px 10px', fontWeight: 700, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#7a96a8' }}>Rule</th>
+                    <th style={{ padding: '8px 10px', fontWeight: 700, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#7a96a8' }}>Target</th>
+                    <th style={{ padding: '8px 10px', fontWeight: 700, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#7a96a8' }}>Result</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {deliveries.map((d) => (
+                    <tr key={d.id} style={{ borderBottom: '1px solid rgba(175,198,216,0.3)' }}>
+                      <td style={{ padding: '8px 10px', whiteSpace: 'nowrap', color: '#4a6474' }}>{formatEventTime(d.sent_at)}</td>
+                      <td style={{ padding: '8px 10px', fontWeight: 600 }}>{d.rule_name || "—"}</td>
+                      <td style={{ padding: '8px 10px', fontSize: 12 }}>{notificationTargetLabel(d.target)}</td>
+                      <td style={{ padding: '8px 10px' }}>
+                        <span className={`notif-result${d.status === "sent" ? " ok" : " err"}`}>
+                          {d.status === "sent" ? "Sent" : d.detail || "Failed"}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             )}

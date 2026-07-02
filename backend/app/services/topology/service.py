@@ -31,6 +31,8 @@ def device_to_dict(device: Device) -> dict:
         "os": device.os,
         "device_type": device.device_type,
         "status": device.status,
+        "lifecycle": device.lifecycle,
+        "monitoring_paused": bool(device.monitoring_paused),
         "icon": device.icon,
         "color": device.color,
         "vlan_id": device.vlan_id,

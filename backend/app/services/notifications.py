@@ -42,6 +42,8 @@ _PROFILE_SECRET_KEYS = frozenset({
     "signal_number",
     "signal_recipient",
     "smtp_password",
+    "webhook_url",
+    "webhook_token",
 })
 _REDACTED = "__redacted__"
 _ENC_PREFIX = "enc:"
@@ -348,6 +350,8 @@ def send_notification_profile(profile: dict[str, Any], message: str) -> str:
     try:
         if provider == "apprise":
             return _send_apprise(message, config)
+        if provider == "webhook":
+            return _send_webhook(message, config)
         if provider in LEGACY_CHANNELS:
             settings = {key: "" if value is None else str(value) for key, value in config.items()}
             return send_notification(provider, message, settings)
@@ -522,6 +526,21 @@ def _send_smtp(message: str, s: dict[str, str], *, subject: str = "NetMap Notifi
                 smtp.login(user, password)
             smtp.send_message(msg)
     return "ok"
+
+
+def _send_webhook(message: str, config: dict[str, Any]) -> str:
+    url = str(config.get("webhook_url", "")).strip()
+    if not url:
+        return "Webhook URL is required"
+    _validate_outbound_url(url)
+    headers = {"Content-Type": "application/json", "User-Agent": "NetMap/1.0"}
+    token = str(config.get("webhook_token", "")).strip()
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    payload = json.dumps({"title": "NetMap", "message": message}).encode()
+    req = urllib.request.Request(url, data=payload, headers=headers, method="POST")
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        return "ok" if 200 <= resp.status < 300 else f"HTTP {resp.status}"
 
 
 def _send_apprise(message: str, config: dict[str, Any]) -> str:

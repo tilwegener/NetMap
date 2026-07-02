@@ -6,7 +6,7 @@ import logging
 import socket
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 
@@ -15,6 +15,7 @@ from app.models.alert_event import AlertEvent
 from app.models.alert_rule import AlertRule
 from app.models.device import Device
 from app.models.monitor_history import DeviceMonitorHistory
+from app.models.notification_delivery import NotificationDelivery
 from app.models.port_target import DevicePortTarget
 from app.models.system_setting import SystemSetting
 from app.schemas.tools import PingRequest
@@ -33,6 +34,9 @@ HISTORY_RETAIN_DAYS = 30
 LIVE_STATUS_FALLBACK_PORTS = (80, 443, 22, 8080, 53, 8443)
 LIVE_STATUS_FALLBACK_TIMEOUT_SECONDS = 0.5
 MONITOR_STATUS_WORKERS = 12
+HTTP_CHECK_TIMEOUT_SECONDS = 5.0
+FLAP_WINDOW_SECONDS = 3600
+FLAP_MIN_TRANSITIONS = 4
 
 
 class AlertMonitorService:
@@ -40,6 +44,7 @@ class AlertMonitorService:
         self._thread: threading.Thread | None = None
         self._stop = threading.Event()
         self._known: dict[int, str] = {}
+        self._flap_times: dict[int, list[datetime]] = {}
         self._initialized = False
         self._last_pruned_at: datetime | None = None
 
@@ -91,7 +96,11 @@ class AlertMonitorService:
 
     def _check(self) -> None:
         with SessionLocal() as db:
-            devices = db.scalars(select(Device).where(Device.status != "disabled")).all()
+            devices = db.scalars(select(Device).where(
+                Device.status != "disabled",
+                Device.monitoring_paused == False,  # noqa: E712
+                Device.lifecycle == "active",
+            )).all()
             rules = db.scalars(select(AlertRule).where(AlertRule.enabled == True)).all()  # noqa: E712
             port_targets = db.scalars(select(DevicePortTarget).where(DevicePortTarget.enabled == True)).all()  # noqa: E712
             notif_settings = load_notification_settings(db)
@@ -140,7 +149,11 @@ class AlertMonitorService:
             port_future_map: dict = {}
             with ThreadPoolExecutor(max_workers=port_workers) as port_ex:
                 for ip, device_id, target in port_tasks:
-                    f = port_ex.submit(check_port, ip, target.port, 2.0, protocol=target.check_type)
+                    timeout = HTTP_CHECK_TIMEOUT_SECONDS if target.check_type in ("http", "https") else 2.0
+                    f = port_ex.submit(
+                        check_port, ip, target.port, timeout,
+                        protocol=target.check_type, http_path=target.http_path,
+                    )
                     port_future_map[f] = (device_id, target)
                 for future in as_completed(port_future_map):
                     device_id, target = port_future_map[future]
@@ -198,11 +211,37 @@ class AlertMonitorService:
 
         rule_updates: list[tuple[int, datetime]] = []
         new_events: list[AlertEvent] = []
+        new_deliveries: list[NotificationDelivery] = []
+
+        def fire(rule: AlertRule, device_id: int, message: str) -> None:
+            channels = json.loads(rule.channels) if isinstance(rule.channels, str) else rule.channels
+            for channel in channels:
+                result = send_notification_target(channel, message, notif_settings, profiles)
+                logger.info("Alert '%s' fired via %s: %s", rule.name, channel, result)
+                new_deliveries.append(NotificationDelivery(
+                    rule_name=rule.name,
+                    device_id=device_id,
+                    target=channel,
+                    status="sent" if result == "ok" else "failed",
+                    detail="" if result == "ok" else str(result)[:255],
+                    sent_at=now,
+                ))
+            rule_updates.append((rule.id, now))
+            new_events.append(AlertEvent(
+                alert_rule_id=rule.id,
+                alert_rule_name=rule.name,
+                device_id=device_id,
+                event_type=rule.event_type,
+                fired_at=now,
+                message=message,
+            ))
 
         for device_id, new_status in current.items():
             old_status = self._known.get(device_id, "unknown")
             if new_status == old_status:
                 continue
+
+            self._flap_times.setdefault(device_id, []).append(now)
 
             device = device_map[device_id]
             label = device.display_name or device.hostname or device.ip_address
@@ -214,25 +253,44 @@ class AlertMonitorService:
                     continue
                 if not self._cooldown_ok(rule, now):
                     continue
+                fire(rule, device_id, self._build_message(rule.event_type, label, device.ip_address, new_status, app_name))
 
-                channels = json.loads(rule.channels) if isinstance(rule.channels, str) else rule.channels
-                message = self._build_message(rule.event_type, label, device.ip_address, new_status, app_name)
+        for rule, device_id, rtt in self._rtt_breaches(rules, rtt_map, now):
+            device = device_map[device_id]
+            label = device.display_name or device.hostname or device.ip_address
+            fire(rule, device_id, self._build_message(
+                "rtt_above", label, device.ip_address, "online", app_name,
+                rtt_ms=rtt, threshold_ms=rule.threshold_ms,
+            ))
 
-                for channel in channels:
-                    result = send_notification_target(channel, message, notif_settings, profiles)
-                    logger.info("Alert '%s' fired via %s: %s", rule.name, channel, result)
-
-                rule_updates.append((rule.id, now))
-                new_events.append(AlertEvent(
-                    alert_rule_id=rule.id,
-                    alert_rule_name=rule.name,
-                    device_id=device_id,
-                    event_type=rule.event_type,
-                    fired_at=now,
-                    message=message,
+        # Flapping: devices with too many status transitions inside the window
+        cutoff = now - timedelta(seconds=FLAP_WINDOW_SECONDS)
+        self._flap_times = {
+            device_id: kept
+            for device_id, times in self._flap_times.items()
+            if (kept := [t for t in times if t >= cutoff]) and device_id in device_map
+        }
+        flap_counts = {
+            device_id: len(times)
+            for device_id, times in self._flap_times.items()
+            if len(times) >= FLAP_MIN_TRANSITIONS
+        }
+        for rule in rules:
+            if rule.event_type != "device_flapping":
+                continue
+            if not self._cooldown_ok(rule, now):
+                continue
+            for device_id, flap_count in flap_counts.items():
+                if rule.device_id is not None and rule.device_id != device_id:
+                    continue
+                device = device_map[device_id]
+                label = device.display_name or device.hostname or device.ip_address
+                fire(rule, device_id, self._build_message(
+                    "device_flapping", label, device.ip_address, current.get(device_id, "unknown"),
+                    app_name, flap_count=flap_count,
                 ))
 
-        if rule_updates or new_events:
+        if rule_updates or new_events or new_deliveries:
             with SessionLocal() as db:
                 for rule_id, triggered_at in rule_updates:
                     db_rule = db.get(AlertRule, rule_id)
@@ -240,6 +298,8 @@ class AlertMonitorService:
                         db_rule.last_triggered_at = triggered_at
                 for event in new_events:
                     db.add(event)
+                for delivery in new_deliveries:
+                    db.add(delivery)
                 db.commit()
 
         self._known = current
@@ -277,11 +337,14 @@ class AlertMonitorService:
             return
         try:
             from sqlalchemy import text
-            from datetime import timedelta
             cutoff = now.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=HISTORY_RETAIN_DAYS)
             with SessionLocal() as db:
                 db.execute(
                     text("DELETE FROM device_monitor_history WHERE checked_at < :cutoff"),
+                    {"cutoff": cutoff.isoformat()},
+                )
+                db.execute(
+                    text("DELETE FROM notification_deliveries WHERE sent_at < :cutoff"),
                     {"cutoff": cutoff.isoformat()},
                 )
                 db.commit()
@@ -301,6 +364,28 @@ class AlertMonitorService:
             return new_status == "warning"
         return False
 
+    @classmethod
+    def _rtt_breaches(
+        cls,
+        rules: list[AlertRule],
+        rtt_map: dict[int, float | None],
+        now: datetime,
+    ) -> list[tuple[AlertRule, int, float]]:
+        """Return (rule, device_id, rtt_ms) for every rtt_above rule breach this cycle."""
+        breaches: list[tuple[AlertRule, int, float]] = []
+        for rule in rules:
+            if rule.event_type != "rtt_above" or rule.threshold_ms is None:
+                continue
+            if not cls._cooldown_ok(rule, now):
+                continue
+            for device_id, rtt in rtt_map.items():
+                if rule.device_id is not None and rule.device_id != device_id:
+                    continue
+                if rtt is None or rtt <= rule.threshold_ms:
+                    continue
+                breaches.append((rule, device_id, rtt))
+        return breaches
+
     @staticmethod
     def _cooldown_ok(rule: AlertRule, now: datetime) -> bool:
         if rule.last_triggered_at is None:
@@ -309,7 +394,24 @@ class AlertMonitorService:
         return elapsed >= rule.cooldown_minutes
 
     @staticmethod
-    def _build_message(event_type: str, label: str, ip: str, status: str, app_name: str) -> str:
+    def _build_message(
+        event_type: str,
+        label: str,
+        ip: str,
+        status: str,
+        app_name: str,
+        rtt_ms: float | None = None,
+        threshold_ms: int | None = None,
+        flap_count: int | None = None,
+    ) -> str:
+        if event_type == "rtt_above":
+            rtt_text = f"{rtt_ms:.0f}" if rtt_ms is not None else "?"
+            body = f"🐢 {label} ({ip}) RTT {rtt_text} ms is above the {threshold_ms} ms threshold"
+            return f"{app_name} Alert\n\n{body}"
+        if event_type == "device_flapping":
+            count_text = str(flap_count) if flap_count is not None else "repeated"
+            body = f"🔁 {label} ({ip}) is flapping — {count_text} status changes in the last hour"
+            return f"{app_name} Alert\n\n{body}"
         descriptions = {
             "device_offline": f"⚠️ {label} ({ip}) is now OFFLINE",
             "device_online": f"✅ {label} ({ip}) is back ONLINE",
