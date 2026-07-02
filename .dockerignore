@@ -16,4 +16,5 @@ frontend/dist
 
 .github
 *.md
+!CHANGELOG.md
 docs
