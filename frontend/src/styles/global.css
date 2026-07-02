@@ -3049,6 +3049,8 @@ body.route-topology .topology-content {
   background: rgba(80, 96, 192, 0.08);
   color: #4858a0;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .topo-entity-group-dot {
@@ -3066,22 +3068,24 @@ body.route-topology .topology-content {
   margin: 0;
 }
 
-/* Relationship rows: flexbox so source/target are always equal width with no empty-column gap */
+/* Relationship rows use fixed columns so long labels do not shift endpoint spacing. */
 .topo-entity-row.topo-entity-row--relationship {
-  display: flex;
-  gap: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 28px minmax(0, 1fr) minmax(76px, 104px);
+  column-gap: 6px;
+  align-items: center;
 }
 .topo-entity-row.topo-entity-row--relationship .topo-entity-name {
-  flex: 1;
   min-width: 0;
 }
 .topo-entity-row.topo-entity-row--relationship .topo-entity-arrow {
-  flex: 0 0 32px;
   text-align: center;
 }
 .topo-entity-row.topo-entity-row--relationship .topo-entity-tag {
-  flex: none;
-  margin-left: 8px;
+  display: block;
+  width: 100%;
+  min-width: 0;
+  text-align: center;
 }
 
 .tools-layout,
@@ -6300,15 +6304,13 @@ textarea.details-inline-input {
 }
 
 .ep-dropdown {
-  position: absolute;
-  top: calc(100% + 3px);
-  left: 0;
-  right: 0;
-  z-index: 220;
+  position: fixed;
+  z-index: 320;
+  box-sizing: border-box;
   background: #fff;
   border: 1px solid #c8d3dd;
   border-radius: 8px;
-  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.13);
+  box-shadow: 0 14px 34px rgba(10, 18, 28, 0.22), 0 3px 10px rgba(10, 18, 28, 0.12);
   overflow: hidden;
 }
 
@@ -6325,6 +6327,7 @@ textarea.details-inline-input {
   gap: 7px;
   padding: 8px 10px;
   border-bottom: 1px solid #e8ecf0;
+  background: #fff;
 }
 
 .ep-search-icon {
@@ -6336,7 +6339,7 @@ textarea.details-inline-input {
   flex: 1;
   border: none;
   outline: none;
-  background: transparent;
+  background: #fff;
   font-size: 13px;
   color: #1a2c3a;
   min-width: 0;
@@ -6450,15 +6453,26 @@ body.theme-dark .ep-trigger-sub { color: #5a7a95; }
 body.theme-dark .ep-trigger-placeholder { color: #4a6a80; }
 body.theme-dark .ep-chevron { color: #4a6a80; }
 
-body.theme-dark .ep-dropdown,
+body.theme-dark .ep-dropdown {
+  background: #111c26;
+  border-color: #2c4050;
+  box-shadow: 0 16px 38px rgba(0, 0, 0, 0.48), 0 4px 12px rgba(0, 0, 0, 0.32);
+}
+
 body.theme-dark .mon-device-picker {
   background: transparent;
   border-color: #1e2e3c;
 }
 
-body.theme-dark .ep-search-row { border-bottom-color: #1e2e3c; }
+body.theme-dark .ep-search-row {
+  background: #111c26;
+  border-bottom-color: #1e2e3c;
+}
 body.theme-dark .ep-search-icon { color: #3a5a70; }
-body.theme-dark .ep-search { color: #c8dae8; }
+body.theme-dark .ep-search {
+  background: #111c26;
+  color: #c8dae8;
+}
 body.theme-dark .ep-search::placeholder { color: #3a5a70; }
 body.theme-dark .ep-section { color: #3a5a70; }
 

@@ -1,5 +1,72 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- **Topology link form** endpoint pickers now render above the modal scroll layer with an opaque dropdown surface, preventing the source/target menu from being clipped, hidden, or see-through while creating or editing links.
+- **Topology links dropdown** now uses fixed source/target/type columns so long link labels no longer shift row spacing.
+
+## [1.3.0] - 2026-06-18
+
+### Security
+- **Replaced `python-jose` with `PyJWT`** — eliminates the unmaintained `ecdsa` dependency that had no available patch for a Minerva timing attack (CVE). `PyJWT 2.x` uses the `cryptography` backend directly.
+- **Pinned `cryptography>=48.0.1`** to resolve the bundled vulnerable OpenSSL advisory.
+- **Pinned `starlette>=1.3.1`** to address several Starlette advisories (form-body limit bypass, HTTP method dispatch, path poisoning).
+- **Upgraded `dompurify` to 3.4.11** — resolves all six open DOMPurify advisories (IN_PLACE bypasses, hook mutation, cross-realm sanitisation, Trusted Types).
+- **Upgraded `vite` to 8.x and `@vitejs/plugin-react` to 6.x** — resolves two Vite Windows dev-server advisories and brings in `esbuild 0.28.x` and `@babel/core 7.29.7+`.
+- **XFF header parsing** now takes the rightmost entry from `X-Forwarded-For` instead of the leftmost, preventing attackers from spoofing their IP for rate-limiting and audit attribution.
+- **Session revocation on password change/reset** — changing a password, completing a self-service reset, or an admin resetting a user's password now revokes all active refresh tokens for that user.
+- **Sibling reset tokens invalidated** — issuing or consuming a password-reset link now invalidates all other pending reset tokens for that user, preventing a stale link from overriding the final password.
+- **Password-reset links require `APP_URL`** — reset emails are only sent when `APP_URL` is explicitly configured; the `Host` header is no longer used as a fallback (prevents host-header poisoning).
+- **Syslog WebSocket authenticates before reserving the shared slot** — unauthenticated connections can no longer exhaust the connection quota; the slot is only claimed after a valid token is presented.
+- **Syslog WebSocket honours the configurable `security_view` permission** — access now uses the RBAC permission cache instead of hardcoded role names.
+- **Alert routes use `alert_write` permission** — alert rule management now checks the correct configurable permission instead of `topology_write`.
+- **IPAM mutation routes use `ipam_write` permission** — subnet, reservation, DHCP import, and VLAN-import routes now check the configurable `ipam_write` permission via the shared permission dependency, removing the hardcoded NetworkAdmin role bypass.
+- **Syslog TCP thread leak fixed** — per-connection threads are no longer appended to the service's tracked thread list, preventing unbounded memory growth under sustained connection churn.
+- **DNS rebinding mitigated in network tools** — `ping`, `traceroute`, and `tcp_port_check` now resolve the hostname once and validate the resulting IP before passing it to the subprocess or socket, eliminating the time-of-check/time-of-use gap.
+- **Manual scheduled discovery enforces single-flight** — the HTTP endpoint now uses the same lock+set guard as the scheduler loop, preventing concurrent nmap processes for the same schedule from being spawned via rapid API calls.
+- **SNMP walk has a wall-clock deadline** — `SnmpClient.walk()` now accepts a `max_wall_seconds` parameter (default 30 s) and stops after that time, preventing a slow or controlled target from holding a worker thread indefinitely.
+
+## [1.3.0] - 2026-06-16
+
+### Changed
+- **IP address placeholders** across discovery, device forms, VLAN/IPAM fields, and network tools now use generic `192.168.1.x` examples.
+- **Inter font bundled:** The UI now ships Inter (weights 400–600) via `@fontsource/inter` instead of relying on a system-installed font. Typography is consistent across browsers and containers; body text uses weight 400 with antialiasing for a lighter feel.
+- **Consistent modals and controls:** Shared modal shell, buttons, search inputs, and status pills are now used across IPAM, Inventory, Monitoring, Topology, Locations, Admin, and related panels — dialogs, toolbars, and forms behave the same way throughout the app.
+- **Primary action buttons** use a deeper teal instead of the brighter accent, so `+ Device` and other primary CTAs are less visually loud.
+- **Discovery scan SNMP** is now a dedicated toggle button with a labelled configuration panel, instead of a checkbox buried in the form. Post-scan actions separate "Import selected" (primary) from "Update existing" (secondary).
+- **Sidebar:** Overview uses a home icon (Monitoring keeps the activity chart icon). The NetMap brand navigates to Overview; collapse is a compact icon on the right.
+- **Announcement banner (MOTD)** uses a purple alert style to distinguish it from offline and network-update notices.
+
+### Added
+- **Overview — Recently updated:** Users with write access can add a device or run a network scan from the Recently updated panel header (and empty state).
+- **Overview favourites drilldown:** Clicking a favourite device on the Overview page now opens a monitoring detail popup without leaving Overview.
+- **VLAN filter** in the Monitoring workspace: a dropdown next to the site filter lets you narrow the device list by VLAN ID.
+- **Favourites filter** in the Monitoring workspace: a star toggle now filters the device table to favourites only, matching Inventory.
+
+### Fixed
+- **Icon Manager server-pack path** no longer shows the internal `dev/` prefix in the help text.
+- **Search box focus rings** in Inventory, Locations, and Monitoring now align with the outer search container instead of glowing around the inner input only.
+- **Monitoring search** no longer shows a double border from overlapping wrapper and input styles.
+- **Monitoring "Reset columns"** removed — column widths are fixed by default.
+- **Locations "View larger map" link** no longer has a pill background behind the text.
+- **Discovery scan modal actions** no longer sit on a shaded footer bar.
+- **Monitoring search** shows a single outer border (no double-border from wrapper + input).
+- **Topology ribbon toolbar** normalises button, select, and status chip heights; `+ Device` matches other controls.
+- **Inventory MOTD spacing** tightened so the announcement bar sits closer to the stat cards below it.
+- **Inventory table** uses the full panel width on wide (1440p) screens with rebalanced column proportions.
+- **IPAM subnet drilldown tabs** no longer cause a horizontal scrollbar; tabs use an equal-width grid within the modal.
+- **IPAM subnet drilldown address table** no longer inherits the monitoring table’s 1580px minimum width. Columns are equal thirds; IP addresses are left-aligned, Status and Label are centred. Label shows inventory display names (with hostname fallback for registered devices; DHCP entries match inventory by MAC when possible).
+- **Overview favourites row** alignment: uptime, RTT, and star columns line up correctly; RTT hides on narrow viewports without breaking the grid.
+- **Inventory default page size** now migrates old auto-saved 10-row preferences to 25 rows once, while still allowing users to choose 10 rows afterward.
+- **Monitoring group dropdown** was missing groups for devices whose group was set via a topology group relationship rather than the denormalised string field. The monitoring API now falls back to the `TopologyGroup` table by FK when the string field is null.
+- **Topology sidebar** open/close no longer recentres or pans the map. Previously `cy.fit()` was being called on sidebar toggle, which would jump the viewport. The sidebar now only calls `cy.resize()` (resize without refit).
+- **Topology zone backgrounds** no longer flicker every 30 seconds during live status polling. The zone style effect had `filteredGraph` in its dependency array; since the style values don't depend on device data, it was needlessly re-applying styles on every status poll.
+- **Monitoring probe reliability:** ICMP failure messages are now logged at `WARNING` level (visible at the default `info` log level) instead of `DEBUG`, making it easier to diagnose devices showing offline. The probe also logs raw ping output when ICMP succeeds but returns zero replies. The `received` field is now handled null-safely so a parse failure no longer silently shadows the underlying error.
+- **ICMP monitoring now works correctly:** `apt-get install iputils-ping` runs `setcap cap_net_raw+ep /bin/ping || true` in its postinstall script — the `|| true` meant `setcap` silently failed in Docker's build sandbox (which doesn't grant `CAP_SETFCAP`), leaving the `ping` binary with no file capability. The Dockerfile now installs `libcap2-bin` and runs `setcap cap_net_raw+ep /bin/ping` explicitly in the same `RUN` layer, which runs with the full build-time capability set and correctly stamps the capability on the binary. Previously only TCP fallback was ever used for monitoring probes.
+
+---
+
 ## [1.2.9] - 2026-06-15
 
 ### Fixed

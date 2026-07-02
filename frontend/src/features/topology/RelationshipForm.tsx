@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef, useMemo, type FormEvent, type KeyboardEvent } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useMemo, type FormEvent, type KeyboardEvent } from "react";
+import { createPortal } from "react-dom";
 import { ChevronDown, Search } from "lucide-react";
 import { type Device, type Relationship, type RelationshipPayload } from "../../api/client";
 import { deviceLabel, blankToNull } from "../../utils/format";
@@ -47,8 +48,10 @@ function EndpointPicker({
   const [search, setSearch] = useState("");
   const [highlighted, setHighlighted] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0, width: 0, listMaxHeight: 220 });
 
   const allOptions = useMemo(() => buildEndpointOptions(devices, groupNames), [devices, groupNames]);
 
@@ -82,17 +85,53 @@ function EndpointPicker({
     el?.scrollIntoView({ block: "nearest" });
   }, [highlighted]);
 
+  function updateDropdownPosition() {
+    const trigger = containerRef.current;
+    if (!trigger) return;
+    const rect = trigger.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - rect.bottom - 16;
+    const spaceAbove = rect.top - 16;
+    const openAbove = spaceBelow < 260 && spaceAbove > spaceBelow;
+    const dropdownHeight = Math.min(320, Math.max(180, openAbove ? spaceAbove : spaceBelow));
+    setDropdownPosition({
+      top: openAbove ? Math.max(12, rect.top - dropdownHeight - 3) : rect.bottom + 3,
+      left: rect.left,
+      width: rect.width,
+      listMaxHeight: Math.max(120, dropdownHeight - 49),
+    });
+  }
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    updateDropdownPosition();
+  }, [open, search, flatOptions.length]);
+
+  useEffect(() => {
+    if (!open) return;
+    window.addEventListener("resize", updateDropdownPosition);
+    window.addEventListener("scroll", updateDropdownPosition, true);
+    return () => {
+      window.removeEventListener("resize", updateDropdownPosition);
+      window.removeEventListener("scroll", updateDropdownPosition, true);
+    };
+  }, [open]);
+
   // Close on outside click
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
-      if (!containerRef.current?.contains(e.target as Node)) setOpen(false);
+      const target = e.target as Node;
+      if (!containerRef.current?.contains(target) && !dropdownRef.current?.contains(target)) setOpen(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [open]);
 
-  function openPicker() {
+  function togglePicker() {
+    if (open) {
+      setOpen(false);
+      return;
+    }
     const idx = flatOptions.findIndex((o) => o.value === value);
     setHighlighted(idx >= 0 ? idx : 0);
     setSearch("");
@@ -129,12 +168,96 @@ function EndpointPicker({
     }
   }
 
+  const dropdown = open ? (
+    <div
+      className="ep-dropdown"
+      ref={dropdownRef}
+      role="listbox"
+      style={{
+        top: dropdownPosition.top,
+        left: dropdownPosition.left,
+        width: dropdownPosition.width,
+      }}
+    >
+      <div className="ep-search-row">
+        <Search size={12} className="ep-search-icon" />
+        <input
+          ref={searchRef}
+          className="ep-search"
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder="IP, hostname, name..."
+          autoComplete="off"
+        />
+      </div>
+      <div className="ep-list" ref={listRef} style={{ maxHeight: dropdownPosition.listMaxHeight }}>
+        {filtered.groups.length > 0 && (
+          <>
+            <div className="ep-section">Groups</div>
+            {filtered.groups.map((opt) => {
+              const idx = flatOptions.indexOf(opt);
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  role="option"
+                  aria-selected={value === opt.value}
+                  className={[
+                    "ep-option",
+                    value === opt.value ? "ep-option--selected" : "",
+                    highlighted === idx ? "ep-option--hl" : "",
+                  ].filter(Boolean).join(" ")}
+                  onMouseEnter={() => setHighlighted(idx)}
+                  onClick={() => select(opt.value)}
+                >
+                  <span className="ep-badge">G</span>
+                  <span className="ep-option-name">{opt.label}</span>
+                </button>
+              );
+            })}
+          </>
+        )}
+        {filtered.devices.length > 0 && (
+          <>
+            <div className="ep-section">Devices</div>
+            {filtered.devices.map((opt) => {
+              const idx = flatOptions.indexOf(opt);
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  role="option"
+                  aria-selected={value === opt.value}
+                  className={[
+                    "ep-option",
+                    value === opt.value ? "ep-option--selected" : "",
+                    highlighted === idx ? "ep-option--hl" : "",
+                  ].filter(Boolean).join(" ")}
+                  onMouseEnter={() => setHighlighted(idx)}
+                  onClick={() => select(opt.value)}
+                >
+                  <span className="ep-option-name">{opt.label}</span>
+                  {opt.sub && <span className="ep-option-ip">{opt.sub}</span>}
+                </button>
+              );
+            })}
+          </>
+        )}
+        {flatOptions.length === 0 && (
+          <div className="ep-empty">No results for "{search}"</div>
+        )}
+      </div>
+    </div>
+  ) : null;
+
   return (
     <div className="ep-picker" ref={containerRef}>
       <button
         type="button"
         className={`ep-trigger${open ? " ep-trigger--open" : ""}`}
-        onClick={openPicker}
+        onClick={togglePicker}
         aria-haspopup="listbox"
         aria-expanded={open}
       >
@@ -151,80 +274,7 @@ function EndpointPicker({
         <ChevronDown size={13} className={`ep-chevron${open ? " ep-chevron--open" : ""}`} />
       </button>
 
-      {open && (
-        <div className="ep-dropdown" role="listbox">
-          <div className="ep-search-row">
-            <Search size={12} className="ep-search-icon" />
-            <input
-              ref={searchRef}
-              className="ep-search"
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="IP, hostname, name…"
-              autoComplete="off"
-            />
-          </div>
-          <div className="ep-list" ref={listRef}>
-            {filtered.groups.length > 0 && (
-              <>
-                <div className="ep-section">Groups</div>
-                {filtered.groups.map((opt) => {
-                  const idx = flatOptions.indexOf(opt);
-                  return (
-                    <button
-                      key={opt.value}
-                      type="button"
-                      role="option"
-                      aria-selected={value === opt.value}
-                      className={[
-                        "ep-option",
-                        value === opt.value ? "ep-option--selected" : "",
-                        highlighted === idx ? "ep-option--hl" : "",
-                      ].filter(Boolean).join(" ")}
-                      onMouseEnter={() => setHighlighted(idx)}
-                      onClick={() => select(opt.value)}
-                    >
-                      <span className="ep-badge">G</span>
-                      <span className="ep-option-name">{opt.label}</span>
-                    </button>
-                  );
-                })}
-              </>
-            )}
-            {filtered.devices.length > 0 && (
-              <>
-                <div className="ep-section">Devices</div>
-                {filtered.devices.map((opt) => {
-                  const idx = flatOptions.indexOf(opt);
-                  return (
-                    <button
-                      key={opt.value}
-                      type="button"
-                      role="option"
-                      aria-selected={value === opt.value}
-                      className={[
-                        "ep-option",
-                        value === opt.value ? "ep-option--selected" : "",
-                        highlighted === idx ? "ep-option--hl" : "",
-                      ].filter(Boolean).join(" ")}
-                      onMouseEnter={() => setHighlighted(idx)}
-                      onClick={() => select(opt.value)}
-                    >
-                      <span className="ep-option-name">{opt.label}</span>
-                      {opt.sub && <span className="ep-option-ip">{opt.sub}</span>}
-                    </button>
-                  );
-                })}
-              </>
-            )}
-            {flatOptions.length === 0 && (
-              <div className="ep-empty">No results for "{search}"</div>
-            )}
-          </div>
-        </div>
-      )}
+      {dropdown ? createPortal(dropdown, document.body) : null}
     </div>
   );
 }
@@ -425,7 +475,7 @@ export function RelationshipForm({
 
   return (
     <Modal title="Add link" onCancel={onCancel}>
-      <form className="modal-form" onSubmit={submit}>
+      <form className="modal-form relationship-form" onSubmit={submit}>
         <label>
           Source
           <EndpointPicker value={sourceEndpoint} onChange={setSourceEndpoint} devices={devices} groupNames={groupNames} />
