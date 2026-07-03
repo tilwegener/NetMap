@@ -16,6 +16,31 @@ import {
 import { HeartbeatBar, HeartbeatTimeline } from "../../components/HeartbeatBar";
 import { Modal } from "../../components/Modal";
 
+type MonitoringSnapshot = {
+  fleet: FleetSummary | null;
+  devices: DeviceMonitorSummary[];
+  portTargets: PortTarget[];
+  cursor: string | null;
+  cachedAt: number;
+};
+
+const MONITORING_SNAPSHOT_MAX_AGE_MS = 15 * 60_000;
+const MONITORING_SNAPSHOT_FRESH_MS = 60_000;
+let monitoringSnapshot: MonitoringSnapshot | null = null;
+
+function getMonitoringSnapshot(): MonitoringSnapshot | null {
+  if (!monitoringSnapshot) return null;
+  if (Date.now() - monitoringSnapshot.cachedAt > MONITORING_SNAPSHOT_MAX_AGE_MS) {
+    monitoringSnapshot = null;
+    return null;
+  }
+  return monitoringSnapshot;
+}
+
+function saveMonitoringSnapshot(snapshot: Omit<MonitoringSnapshot, "cachedAt">) {
+  monitoringSnapshot = { ...snapshot, cachedAt: Date.now() };
+}
+
 export function MonitoringWorkspace({
   accessToken,
   canWrite,
@@ -99,15 +124,18 @@ export function MonitoringWorkspace({
     document.addEventListener("mouseup", onUp);
   }
 
-  const [fleet, setFleet] = useState<FleetSummary | null>(null);
-  const [devices, setDevices] = useState<DeviceMonitorSummary[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cachedSnapshot = useMemo(getMonitoringSnapshot, []);
+  const [fleet, setFleet] = useState<FleetSummary | null>(() => cachedSnapshot?.fleet ?? null);
+  const [devices, setDevices] = useState<DeviceMonitorSummary[]>(() => cachedSnapshot?.devices ?? []);
+  const [loading, setLoading] = useState(() => cachedSnapshot === null);
+  const devicesRef = useRef<DeviceMonitorSummary[]>(cachedSnapshot?.devices ?? []);
   const [error, setError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [history, setHistory] = useState<MonitorHistoryPoint[]>([]);
   const [historyHours, setHistoryHours] = useState(24);
   const [historyLoading, setHistoryLoading] = useState(false);
-  const [portTargets, setPortTargets] = useState<PortTarget[]>([]);
+  const [portTargets, setPortTargets] = useState<PortTarget[]>(() => cachedSnapshot?.portTargets ?? []);
+  const portTargetsRef = useRef<PortTarget[]>(cachedSnapshot?.portTargets ?? []);
   const [showPortsModal, setShowPortsModal] = useState(false);
   const [portFormPort, setPortFormPort] = useState("");
   const [portFormLabel, setPortFormLabel] = useState("");
@@ -132,6 +160,31 @@ export function MonitoringWorkspace({
   const [filterVlan, setFilterVlan] = useState("all");
   const [favouriteFilter, setFavouriteFilter] = useState(false);
 
+  useEffect(() => {
+    if (cachedSnapshot) {
+      monitorCursorRef.current = cachedSnapshot.cursor;
+      deltaPollsRef.current = 0;
+    }
+  }, [cachedSnapshot]);
+
+  useEffect(() => {
+    devicesRef.current = devices;
+  }, [devices]);
+
+  useEffect(() => {
+    portTargetsRef.current = portTargets;
+  }, [portTargets]);
+
+  useEffect(() => {
+    if (loading || fleet === null) return;
+    saveMonitoringSnapshot({
+      fleet,
+      devices,
+      portTargets,
+      cursor: monitorCursorRef.current,
+    });
+  }, [devices, fleet, loading, portTargets]);
+
   const loadAll = useCallback(async (showSpinner = false) => {
     if (showSpinner) setRefreshing(true);
     try {
@@ -143,11 +196,16 @@ export function MonitoringWorkspace({
       setFleet(f);
       setDevices(d);
       setPortTargets(p);
+      devicesRef.current = d;
+      portTargetsRef.current = p;
       monitorCursorRef.current = f.last_checked;
       deltaPollsRef.current = 0;
+      saveMonitoringSnapshot({ fleet: f, devices: d, portTargets: p, cursor: f.last_checked });
       setError(null);
     } catch {
-      setError("Failed to load monitoring data");
+      if (devicesRef.current.length === 0 && fleet === null) {
+        setError("Failed to load monitoring data");
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -167,7 +225,22 @@ export function MonitoringWorkspace({
         setDevices((prev) => {
           const map = new Map(prev.map((d) => [d.device_id, d]));
           for (const d of delta) map.set(d.device_id, d);
-          return Array.from(map.values());
+          const next = Array.from(map.values());
+          devicesRef.current = next;
+          saveMonitoringSnapshot({
+            fleet: f,
+            devices: next,
+            portTargets: portTargetsRef.current,
+            cursor: f.last_checked ?? since,
+          });
+          return next;
+        });
+      } else {
+        saveMonitoringSnapshot({
+          fleet: f,
+          devices: devicesRef.current,
+          portTargets: portTargetsRef.current,
+          cursor: f.last_checked ?? since,
         });
       }
       monitorCursorRef.current = f.last_checked ?? since;
@@ -193,7 +266,19 @@ export function MonitoringWorkspace({
   }, [fleet, livePingEnabled, monitorIntervalLabel, nowTick, relativeTime, setTopbarNote]);
   useEffect(() => () => setTopbarNote(""), [setTopbarNote]);
 
-  useEffect(() => { void loadAll(); }, [loadAll]);
+  useEffect(() => {
+    const cached = getMonitoringSnapshot();
+    if (!cached) {
+      void loadAll();
+      return;
+    }
+    setRefreshing(true);
+    const cacheAge = Date.now() - cached.cachedAt;
+    const refresh = cacheAge < MONITORING_SNAPSHOT_FRESH_MS && cached.cursor
+      ? loadDelta()
+      : loadAll();
+    void refresh.finally(() => setRefreshing(false));
+  }, [loadAll, loadDelta]);
   useEffect(() => {
     const id = setInterval(() => {
       deltaPollsRef.current += 1;
@@ -448,7 +533,6 @@ export function MonitoringWorkspace({
           icon={<IconServer size={20} />}
           accent="teal"
           onClick={() => setFilterStatus("all")}
-          active={filterStatus === "all"}
         />
         <DashStat
           label="Live ping"
@@ -526,6 +610,7 @@ export function MonitoringWorkspace({
                 : ` (${devices.length})`}
             </span>
             <div className="mon-panel-controls">
+              {refreshing && <span className="mon-refresh-status">Updating...</span>}
               <select className="toolbar-select" value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
                 <option value="all">All statuses</option>
                 <option value="online">Online</option>

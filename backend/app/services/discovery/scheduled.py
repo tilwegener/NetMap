@@ -31,6 +31,8 @@ from app.services.snmp_profiles import decrypt_profile_community
 
 logger = logging.getLogger(__name__)
 
+DISAPPEARED_MISSED_SCAN_THRESHOLD = 3
+
 
 def normalize_mac(mac_address: str | None) -> str | None:
     if not mac_address:
@@ -352,13 +354,19 @@ def _disappeared_observations(
     current_hosts: list[DiscoveryHost],
     now: datetime,
 ) -> list[DiscoveryObservation]:
-    current_ips = {host.ip_address for host in current_hosts}
-    current_macs = {normalize_mac(host.mac_address) for host in current_hosts if normalize_mac(host.mac_address)}
+    miss_window = _recent_completed_scans(db, schedule_id, scan_id, DISAPPEARED_MISSED_SCAN_THRESHOLD)
+    if len(miss_window) < DISAPPEARED_MISSED_SCAN_THRESHOLD:
+        return []
+    baseline_scan = previous_scan if DISAPPEARED_MISSED_SCAN_THRESHOLD == 1 else miss_window[-1]
+    absent_scan_hosts = [current_hosts]
+    if DISAPPEARED_MISSED_SCAN_THRESHOLD > 1:
+        absent_scan_hosts.extend(deserialize_results(scan.results_json) for scan in miss_window[:-1])
+
     observations: list[DiscoveryObservation] = []
-    previous_hosts = annotate_hosts_with_inventory(deserialize_results(previous_scan.results_json), db)
+    previous_hosts = annotate_hosts_with_inventory(deserialize_results(baseline_scan.results_json), db)
     for host in previous_hosts:
         normalized_mac = normalize_mac(host.mac_address)
-        if host.ip_address in current_ips or (normalized_mac and normalized_mac in current_macs):
+        if any(_host_seen_in_scan(host.ip_address, normalized_mac, hosts) for hosts in absent_scan_hosts):
             continue
         observations.append(_upsert_observation(
             db,
@@ -367,10 +375,37 @@ def _disappeared_observations(
             "disappeared",
             host,
             f"Previously discovered device no longer responds at {host.ip_address}",
-            {"previous_scan_id": previous_scan.id},
+            {"previous_scan_id": baseline_scan.id, "missed_scans": DISAPPEARED_MISSED_SCAN_THRESHOLD},
             now,
         ))
     return observations
+
+
+def _recent_completed_scans(
+    db: Session,
+    schedule_id: int,
+    before_scan_id: int,
+    limit: int,
+) -> list[DiscoveryScan]:
+    if limit <= 0:
+        return []
+    return list(db.scalars(
+        select(DiscoveryScan)
+        .where(DiscoveryScan.schedule_id == schedule_id)
+        .where(DiscoveryScan.status == "completed")
+        .where(DiscoveryScan.id < before_scan_id)
+        .order_by(DiscoveryScan.id.desc())
+        .limit(limit)
+    ).all())
+
+
+def _host_seen_in_scan(ip_address: str, normalized_mac: str | None, hosts: list[DiscoveryHost]) -> bool:
+    for host in hosts:
+        if host.ip_address == ip_address:
+            return True
+        if normalized_mac and normalize_mac(host.mac_address) == normalized_mac:
+            return True
+    return False
 
 
 def send_observation_notifications(db: Session, schedule: DiscoverySchedule, observations: list[DiscoveryObservation]) -> None:

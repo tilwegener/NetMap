@@ -1,3 +1,4 @@
+import json
 from datetime import datetime, timezone
 
 from sqlalchemy import create_engine
@@ -36,9 +37,10 @@ def _session():
     return sessionmaker(bind=engine, autoflush=False, autocommit=False)()
 
 
-def _scan(*hosts: DiscoveryHost) -> DiscoveryScan:
+def _scan(*hosts: DiscoveryHost, schedule_id: int | None = None) -> DiscoveryScan:
     return DiscoveryScan(
         actor_user_id=1,
+        schedule_id=schedule_id,
         target="192.168.1.0/24",
         scan_type="ping",
         status="completed",
@@ -128,24 +130,65 @@ def test_scheduled_discovery_ip_conflict_creates_observation():
     assert ip_change.ip_address == "192.168.1.84"
 
 
-def test_scheduled_discovery_records_disappeared_previous_host():
+def test_scheduled_discovery_waits_before_recording_disappeared_host():
     db = _session()
     schedule = _schedule()
+    db.add(schedule)
+    db.commit()
+    db.refresh(schedule)
     previous = _scan(
         DiscoveryHost(ip_address="192.168.1.10", hostname="old-host", mac_address="aa:bb:cc:dd:ee:ff"),
         DiscoveryHost(ip_address="192.168.1.20", hostname="stable-host", mac_address="11:22:33:44:55:66"),
+        schedule_id=schedule.id,
     )
     current = _scan(
         DiscoveryHost(ip_address="192.168.1.20", hostname="stable-host", mac_address="11:22:33:44:55:66"),
+        schedule_id=schedule.id,
     )
-    db.add_all([schedule, previous, current])
+    db.add_all([previous, current])
     db.commit()
-    db.refresh(schedule)
     db.refresh(previous)
     db.refresh(current)
 
     observations = create_observations_for_scan(db, schedule, current, previous)
 
     disappeared = [observation for observation in observations if observation.observation_type == "disappeared"]
+    assert disappeared == []
+
+
+def test_scheduled_discovery_records_disappeared_after_three_missed_scans():
+    db = _session()
+    schedule = _schedule()
+    db.add(schedule)
+    db.commit()
+    db.refresh(schedule)
+    baseline = _scan(
+        DiscoveryHost(ip_address="192.168.1.10", hostname="old-host", mac_address="aa:bb:cc:dd:ee:ff"),
+        DiscoveryHost(ip_address="192.168.1.20", hostname="stable-host", mac_address="11:22:33:44:55:66"),
+        schedule_id=schedule.id,
+    )
+    miss_one = _scan(
+        DiscoveryHost(ip_address="192.168.1.20", hostname="stable-host", mac_address="11:22:33:44:55:66"),
+        schedule_id=schedule.id,
+    )
+    miss_two = _scan(
+        DiscoveryHost(ip_address="192.168.1.20", hostname="stable-host", mac_address="11:22:33:44:55:66"),
+        schedule_id=schedule.id,
+    )
+    miss_three = _scan(
+        DiscoveryHost(ip_address="192.168.1.20", hostname="stable-host", mac_address="11:22:33:44:55:66"),
+        schedule_id=schedule.id,
+    )
+    db.add_all([baseline, miss_one, miss_two, miss_three])
+    db.commit()
+    db.refresh(miss_two)
+    db.refresh(miss_three)
+
+    observations = create_observations_for_scan(db, schedule, miss_three, miss_two)
+
+    disappeared = [observation for observation in observations if observation.observation_type == "disappeared"]
     assert len(disappeared) == 1
     assert disappeared[0].ip_address == "192.168.1.10"
+    details = json.loads(disappeared[0].details_json)
+    assert details["previous_scan_id"] == baseline.id
+    assert details["missed_scans"] == 3

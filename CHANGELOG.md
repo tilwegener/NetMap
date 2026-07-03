@@ -17,6 +17,7 @@
 - **Custom device types** — the device form's type picker gained a "Custom…" option with a free-text name (e.g. iDRAC, UPS, PDU). Custom types display consistently in Inventory, Topology, filters, and exports, and fall back to the default device icon.
 - **Interactive monitoring summary cards** — the Monitored/Online/Offline cards in Monitoring now click to apply the matching status filter (click again to clear).
 - **GitHub Actions security scanning** — a new report-only `security-scan.yml` workflow runs Semgrep SAST plus `pip-audit` and `npm audit` on pushes, pull requests, and a weekly schedule. All jobs are non-blocking until the baseline is triaged.
+- **Instant Monitoring re-entry** — the Monitoring workspace keeps an in-memory stale-while-revalidate snapshot of the fleet summary, device table, and service checks. Returning to Monitoring renders the last known data immediately, then refreshes with a lightweight delta request when fresh or a full refresh when stale.
 
 ### Fixed
 - **Scheduled discovery IP conflicts are review-only** — when a scheduled scan finds a MAC-matched device at an IP that already belongs to a *different* inventory device, the move is no longer misattributed as a field change on the occupying device. It now creates an `ip_change` observation against the MAC-matched device for manual review, and the IP is never auto-applied onto an occupied address.
@@ -26,7 +27,15 @@
 - **Monitoring drilldown pause control** now lets writable users pause/resume an individual active device from the Monitoring popup, while lifecycle-paused devices explain why they cannot be resumed there.
 - **IPAM next-free reservation** is now visible from subnet rows and the subnet detail modal, not only inside the generic reserve dialog.
 - **IPAM reserve and next-free actions** now use the secondary button treatment from the unified UI styles; the subnet popup keeps "Reserve next IP" in the top bar beside close.
-- **Pause controls** in device details and the monitoring popup now use the shared secondary button treatment.
+- **Pause controls** in device details, Inventory details, and the Monitoring popup now use the shared secondary button treatment from the design-system preview.
+- **Dark-mode secondary buttons** now use the same raised blue family as the Monitoring popup header, so pause/resume controls remain visible before hover without clashing with the modal surface.
+- **Device detail status dots** now strobe subtly with a status-coloured glow so the selected device state feels live and interactive.
+- **Monitoring status dots** now use a stronger status-coloured strobe in the device table and popup header, while respecting reduced-motion preferences.
+- **Monitoring offline alert spacing** now has more even top/bottom padding so the alert bar feels balanced.
+- **Monitoring summary cards** no longer show the active filter ring on the default Monitored card; only explicit status filters stay highlighted.
+- **Paused device status** now uses a non-pulsing neutral gray treatment across Monitoring, Inventory/detail badges, topbar paused state, and topology labels.
+- **Scheduled discovery disappeared-host alerts** now require three consecutive missed scheduled scans before opening a network-change observation, reducing noise from devices that only intermittently respond.
+
 ## [1.3.1] - 2026-06-28
 
 ### Security

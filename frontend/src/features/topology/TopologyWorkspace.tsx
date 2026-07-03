@@ -649,7 +649,7 @@ export function TopologyWorkspace({
           {
             selector: "node.device.status-paused",
             style: {
-              "text-background-color": "#fdecec",
+              "text-background-color": "#eef4f8",
             },
           },
           {
