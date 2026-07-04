@@ -261,7 +261,26 @@
 
 .nm-table tbody tr:first-child td { border-top: none; }
 
-.nm-table tbody tr:hover { background: var(--nm-accent-soft); }
+.nm-table tbody tr:hover { background: var(--nm-row-hover); }
+
+/* Legacy tables share the same canonical row-hover treatment: soft tint +
+   the 3px teal left edge from the VLAN table. Rows with a real border-left
+   mechanism (vlan, inventory, security groups) colour their own border;
+   everything else gets the edge via an inset shadow (no layout shift). */
+.admin-users-row:hover { background: var(--nm-row-hover); }
+
+.dash-device-row:hover,
+.audit-log-row:hover,
+.admin-users-row:hover,
+.icon-mgr-pack-row:hover {
+  box-shadow: inset 3px 0 0 rgba(29, 154, 176, 0.3);
+}
+
+.mon-row:hover td:first-child,
+.ipam-addr-row:hover td:first-child,
+.nm-table tbody tr:hover td:first-child {
+  box-shadow: inset 3px 0 0 rgba(29, 154, 176, 0.3);
+}
 
 .nm-table--selectable tbody tr { cursor: pointer; }
 
