@@ -1,0 +1,188 @@
+import type cytoscape from "cytoscape";
+
+// Cytoscape's Css typings do not include the non-standard shadow-* extension
+// properties; funnel them through one typed boundary instead of scattered casts.
+export function cyExtendedStyle(style: Record<string, string | number>): cytoscape.Css.Node {
+  return style as unknown as cytoscape.Css.Node;
+}
+
+/** Static stylesheet for the topology canvas. Theme-dependent colours are
+ *  applied afterwards via data attributes and cy.style() updates. */
+export function buildCytoscapeStylesheet(edgeLabelFontSize: number): cytoscape.StylesheetJson {
+  return [
+    {
+      selector: "node.device",
+      style: {
+        "background-color": "transparent",
+        "background-opacity": 0,
+        "border-color": "transparent",
+        "border-width": 0,
+        "bounds-expansion": 12,
+        "font-size": 1,
+        height: "data(hitSize)",
+        label: "",
+        "overlay-opacity": 0,
+        shape: "rectangle",
+        width: "data(hitSize)",
+        "z-index": 10,
+      },
+    },
+    {
+      selector: "node.device.hovered",
+      style: {
+        height: 56,
+        opacity: 0.92,
+        width: 56,
+        "z-index": 65,
+      },
+    },
+    {
+      selector: "node.device.security-alert",
+      style: {
+        opacity: 0.88,
+        "text-border-color": "#f0b9b9",
+        "text-border-width": 2,
+        "z-index": 55,
+      },
+    },
+    {
+      selector: "node.device.status-online",
+      style: {
+        "text-background-color": "#effaf5",
+      },
+    },
+    {
+      selector: "node.device.status-offline",
+      style: {
+        "text-background-color": "#f7f7f9",
+      },
+    },
+    {
+      selector: "node.device.status-paused",
+      style: {
+        "text-background-color": "#eef4f8",
+      },
+    },
+    {
+      selector: "node.device.status-warning",
+      style: {
+        "text-background-color": "#fff8ea",
+      },
+    },
+    {
+      selector: "node.device.status-unknown",
+      style: {
+        "text-background-color": "#f4f8fa",
+      },
+    },
+    {
+      selector: "node.device.focus-pulse",
+      style: {
+        opacity: 0.75,
+        "z-index": 70,
+      },
+    },
+    {
+      selector: "node.zone",
+      style: {
+        "background-color": "data(zoneBgColor)",
+        "background-opacity": 0.1,
+        "border-color": "data(zoneBorderColor)",
+        "border-opacity": 0.1,
+        "border-style": "dashed",
+        "border-width": 2,
+        color: "data(zoneLabelColor)",
+        "font-size": 24,
+        "font-weight": 700,
+        label: "data(label)",
+        padding: "34px",
+        shape: "round-rectangle",
+        "text-halign": "center",
+        "text-margin-y": -26,
+        "text-valign": "top",
+      },
+    },
+    {
+      selector: "edge",
+      style: {
+        "curve-style": "bezier",
+        label: "data(label)",
+        "line-color": "#6f8798",
+        "line-style": "solid",
+        "target-arrow-color": "#6f8798",
+        "target-arrow-shape": "triangle",
+        color: "data(edgeLabelColor)",
+        "font-size": edgeLabelFontSize,
+        "font-weight": 600,
+        "overlay-opacity": 0,
+        "overlay-padding": "12px",
+        "text-background-color": "data(edgeLabelBg)",
+        "text-background-opacity": 1,
+        "text-background-padding": "5px",
+        "text-background-shape": "roundrectangle",
+        "text-border-opacity": 1,
+        "text-border-width": 1,
+        "text-border-color": "data(edgeBorderColor)",
+        width: 2,
+      },
+    },
+    {
+      selector: "edge.hovered",
+      style: {
+        "line-color": "#1d6472",
+        "target-arrow-color": "#1d6472",
+        width: 4,
+        "z-index": 40,
+      },
+    },
+    {
+      selector: "edge:selected",
+      style: {
+        "line-color": "#1d6472",
+        "target-arrow-color": "#1d6472",
+        width: 5,
+        "z-index": 60,
+      },
+    },
+    {
+      selector: "node.device:selected",
+      style: {
+        height: 58,
+        opacity: 0.9,
+        width: 58,
+      },
+    },
+    {
+      selector: "node.device.panel-hover",
+      style: cyExtendedStyle({
+        "shadow-blur": 22,
+        "shadow-color": "#1d9ab0",
+        "shadow-opacity": 0.55,
+        "shadow-offset-x": 0,
+        "shadow-offset-y": 0,
+        opacity: 1,
+        "z-index": 80,
+      }),
+    },
+    {
+      selector: "node.zone.panel-hover",
+      style: cyExtendedStyle({
+        "shadow-blur": 18,
+        "shadow-color": "#8040c0",
+        "shadow-opacity": 0.4,
+        "shadow-offset-x": 0,
+        "shadow-offset-y": 0,
+      }),
+    },
+    {
+      selector: "edge.panel-hover",
+      style: {
+        "line-color": "#1d9ab0",
+        "target-arrow-color": "#1d9ab0",
+        width: 4,
+        opacity: 1,
+        "z-index": 50,
+      },
+    },
+  ];
+}
