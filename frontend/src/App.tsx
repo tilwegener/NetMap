@@ -1,9 +1,9 @@
 import { useState, useEffect, useMemo, useRef, type ReactNode } from "react";
 import { Moon, Sun } from "lucide-react";
 import {
-  type DashboardSummary, type Device, type DeviceMonitorSummary, type DeviceStatus, type SystemSettings, type TokenPair,
-  type TopologyGraph, type User, type VersionInfo, api, subscribeTokenRefresh,
+  type SystemSettings, type TokenPair, type User, type VersionInfo, api, subscribeTokenRefresh,
 } from "./api/client";
+import { useGraphData } from "./hooks/useGraphData";
 import { useTheme } from "./providers/ThemeProvider";
 import { storageKeys, readBool, writeBool } from "./utils/storage";
 import {
@@ -24,8 +24,6 @@ export function App() {
   const [needsSetup, setNeedsSetup] = useState<boolean | null>(null);
   const [tokens, setTokens] = useState<TokenPair | null>(() => readStoredTokens());
   const [user, setUser] = useState<User | null>(null);
-  const [summary, setSummary] = useState<DashboardSummary | null>(null);
-  const [graph, setGraph] = useState<TopologyGraph>({ devices: [], relationships: [] });
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [currentRoute, setCurrentRoute] = useState<AppRoute>(() => readRouteFromLocation());
@@ -36,9 +34,6 @@ export function App() {
   const { theme, toggleTheme } = useTheme();
   const [versionInfo, setVersionInfo] = useState<VersionInfo | null>(null);
   const [showWhatsNew, setShowWhatsNew] = useState(false);
-  const topologyRefreshRequestIdRef = useRef(0);
-  const monitorCursorRef = useRef<string | null>(null);
-  const monitorPollCountRef = useRef(0);
   const [resetToken, setResetToken] = useState<string | null>(() => {
     const params = new URLSearchParams(window.location.search);
     return params.get("reset_token");
@@ -106,6 +101,25 @@ export function App() {
 
   const bootstrapDoneRef = useRef(false);
 
+  const screen = useMemo(() => {
+    if (resetToken) return "reset-password";
+    if (loading || needsSetup === null) return "loading";
+    if (needsSetup) return "setup";
+    if (!accessToken || !user) return "login";
+    return "dashboard";
+  }, [accessToken, loading, needsSetup, user, resetToken]);
+
+  const {
+    graph, summary, loadInitial, refreshTopology,
+    upsertGraphDevice, removeGraphDevices, clearSummary,
+  } = useGraphData({
+    accessToken,
+    active: screen === "dashboard",
+    livePingEnabled: appSettings?.live_ping_enabled,
+    monitorIntervalSeconds: appSettings?.monitor_interval_seconds,
+    onError: setError,
+  });
+
   useEffect(() => {
     // A token rotation for an already-authenticated session must not re-run
     // the bootstrap (it would flash the loading screen and refetch everything).
@@ -149,26 +163,11 @@ export function App() {
         setUser(currentUser);
         bootstrapDoneRef.current = true;
 
-        const [dashboardResult, topologyResult] = await Promise.allSettled([
-          api.dashboardSummary(token),
-          api.topologyGraph(token),
-        ]);
+        // Awaited so the loading screen covers the initial graph fetch;
+        // non-405 failures surface through the shared error banner.
+        await loadInitial(token);
         if (cancelled) {
           return;
-        }
-        if (dashboardResult.status === "fulfilled") {
-          setSummary(dashboardResult.value);
-        } else if (dashboardResult.reason instanceof Error) {
-          if (!isMethodNotAllowedError(dashboardResult.reason)) {
-            setError(dashboardResult.reason.message);
-          }
-        }
-        if (topologyResult.status === "fulfilled") {
-          setGraph(topologyResult.value);
-        } else if (topologyResult.reason instanceof Error) {
-          if (!isMethodNotAllowedError(topologyResult.reason)) {
-            setError(topologyResult.reason.message);
-          }
         }
       } catch (err) {
         if (!cancelled) {
@@ -192,14 +191,6 @@ export function App() {
       cancelled = true;
     };
   }, [tokens?.access_token]);
-
-  const screen = useMemo(() => {
-    if (resetToken) return "reset-password";
-    if (loading || needsSetup === null) return "loading";
-    if (needsSetup) return "setup";
-    if (!accessToken || !user) return "login";
-    return "dashboard";
-  }, [accessToken, loading, needsSetup, user, resetToken]);
 
   async function handleSetup(username: string, password: string) {
     setError(null);
@@ -232,7 +223,7 @@ export function App() {
     storeTokens(null);
     setTokens(null);
     setUser(null);
-    setSummary(null);
+    clearSummary();
     window.history.replaceState(null, "", "/");
     setCurrentRoute("/overview");
     if (reason === "idle") {
@@ -257,73 +248,6 @@ export function App() {
   }, [screen, tokens?.access_token]);
 
   useEffect(() => {
-    if (screen !== "dashboard" || !accessToken || appSettings?.live_ping_enabled === false) {
-      monitorCursorRef.current = null;
-      monitorPollCountRef.current = 0;
-      return;
-    }
-
-    const validStatuses = new Set<DeviceStatus>(["online", "offline", "warning", "unknown", "disabled"]);
-    const boundedMonitorIntervalSeconds = Math.min(3600, Math.max(30, appSettings?.monitor_interval_seconds ?? 300));
-    const pollMs = Math.min(60_000, Math.max(30_000, boundedMonitorIntervalSeconds * 1000));
-    const fullRefreshPolls = Math.max(1, Math.ceil(300_000 / pollMs));
-    let cancelled = false;
-    const token = accessToken;
-
-    function applyMonitorRows(rows: DeviceMonitorSummary[]) {
-      if (rows.length === 0) return;
-      const byId = new Map(rows.map((row) => [row.device_id, row]));
-      setGraph((current) => {
-        let changed = false;
-        const devices = current.devices.map((device) => {
-          const row = byId.get(device.id);
-          if (!row || !validStatuses.has(row.status as DeviceStatus)) {
-            return device;
-          }
-          const nextStatus = row.status as DeviceStatus;
-          const nextCheckedAt = row.last_checked ?? device.last_monitored_at;
-          if (device.monitor_status === nextStatus && device.last_monitored_at === nextCheckedAt) {
-            return device;
-          }
-          changed = true;
-          return {
-            ...device,
-            monitor_status: nextStatus,
-            last_monitored_at: nextCheckedAt,
-          };
-        });
-        return changed ? { ...current, devices } : current;
-      });
-    }
-
-    async function pollMonitoring(forceFull = false) {
-      try {
-        const previousCursor = monitorCursorRef.current;
-        const shouldFullRefresh = forceFull || !previousCursor || monitorPollCountRef.current >= fullRefreshPolls;
-        const [fleet, rows] = await Promise.all([
-          api.getMonitoringSummary(token),
-          api.listMonitoringDevices(token, shouldFullRefresh ? undefined : previousCursor),
-        ]);
-        if (cancelled) return;
-        applyMonitorRows(rows);
-        monitorCursorRef.current = fleet.last_checked ?? previousCursor;
-        monitorPollCountRef.current = shouldFullRefresh ? 1 : monitorPollCountRef.current + 1;
-      } catch {
-        // Keep the current graph state; the next poll or route refresh will reconcile.
-      }
-    }
-
-    void pollMonitoring(true);
-    const intervalId = window.setInterval(() => {
-      void pollMonitoring(false);
-    }, pollMs);
-    return () => {
-      cancelled = true;
-      window.clearInterval(intervalId);
-    };
-  }, [accessToken, appSettings?.live_ping_enabled, appSettings?.monitor_interval_seconds, screen]);
-
-  useEffect(() => {
     if (screen !== "dashboard" || !tokens?.access_token) {
       return;
     }
@@ -343,46 +267,6 @@ export function App() {
       events.forEach((eventName) => window.removeEventListener(eventName, reset));
     };
   }, [screen, tokens?.access_token, idleTimeoutMs]);
-
-  async function refreshTopology(token = accessToken) {
-    if (!token) {
-      return;
-    }
-    const requestId = ++topologyRefreshRequestIdRef.current;
-    const [dashboard, topology] = await Promise.all([
-      api.dashboardSummary(token),
-      api.topologyGraph(token),
-    ]);
-    if (requestId !== topologyRefreshRequestIdRef.current) {
-      return;
-    }
-    setSummary(dashboard);
-    setGraph(topology);
-  }
-
-  function upsertGraphDevice(device: Device) {
-    setGraph((current) => {
-      const exists = current.devices.some((row) => row.id === device.id);
-      return {
-        ...current,
-        devices: exists
-          ? current.devices.map((row) => (row.id === device.id ? device : row))
-          : [...current.devices, device],
-      };
-    });
-  }
-
-  function removeGraphDevices(deviceIds: number[]) {
-    const removeSet = new Set(deviceIds);
-    setGraph((current) => ({
-      devices: current.devices.filter((device) => !removeSet.has(device.id)),
-      relationships: current.relationships.filter(
-        (relationship) =>
-          !removeSet.has(relationship.source_device_id) &&
-          !removeSet.has(relationship.target_device_id),
-      ),
-    }));
-  }
 
   function closeWhatsNew() {
     if (versionInfo?.current) {
