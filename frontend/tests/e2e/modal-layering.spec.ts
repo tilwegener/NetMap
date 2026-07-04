@@ -18,7 +18,7 @@ test.describe("Modal layering", () => {
     });
 
     test("Add Device button opens device form modal", async ({ page }) => {
-      const addBtn = page.getByRole("button", { name: /add device/i });
+      const addBtn = page.getByRole("button", { name: "+ Device" });
       await addBtn.waitFor({ state: "visible", timeout: 8000 });
       await addBtn.click();
       // Device form should be rendered above topology canvas
@@ -27,7 +27,7 @@ test.describe("Modal layering", () => {
     });
 
     test("modal does not render below the topology overlay layer (z-index check)", async ({ page }) => {
-      const addBtn = page.getByRole("button", { name: /add device/i });
+      const addBtn = page.getByRole("button", { name: "+ Device" });
       await addBtn.waitFor({ state: "visible", timeout: 8000 });
       await addBtn.click();
 
@@ -61,7 +61,7 @@ test.describe("Modal layering", () => {
     });
 
     test("Add Device button opens device form modal above inventory table", async ({ page }) => {
-      const addBtn = page.getByRole("button", { name: /add device/i });
+      const addBtn = page.getByRole("button", { name: "+ Device" });
       await addBtn.waitFor({ state: "visible", timeout: 8000 });
       await addBtn.click();
 
@@ -70,7 +70,7 @@ test.describe("Modal layering", () => {
     });
 
     test("pressing Escape or clicking cancel closes the modal", async ({ page }) => {
-      const addBtn = page.getByRole("button", { name: /add device/i });
+      const addBtn = page.getByRole("button", { name: "+ Device" });
       await addBtn.waitFor({ state: "visible", timeout: 8000 });
       await addBtn.click();
 

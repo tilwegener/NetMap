@@ -3,6 +3,10 @@
 ## Unreleased
 
 ### Added
+- **Toast notifications** — actions across the app (deletes, saves, imports) now confirm success or surface failures in a bottom-right toast stack instead of failing silently or relying on scattered inline text.
+- **Styled destructive-action confirmations** — deleting devices, links, groups, locations, subnets, reservations, DHCP leases, schedules, roles, and saved searches now opens a consistent danger-styled dialog with consequence text; bulk device deletes of 5+ require typing `delete` to confirm.
+- **Workspace crash containment** — an unexpected error in one workspace now shows a retryable fault card while the rest of NetMap keeps working, instead of a white screen.
+- **Loading skeletons** — workspaces show shimmer skeleton layouts while data loads (route changes, VLANs, IPAM) instead of blank panels or plain "Loading…" text.
 - **Response-time (RTT) threshold alert rules** — Admin → Alerts now offers a "Response time above threshold" trigger with a configurable millisecond threshold (per device or fleet-wide). The background monitor fires the rule when a device's probe RTT exceeds the threshold, reusing the existing notification channels and cooldown; a persistent high-latency condition re-alerts once per cooldown period. Migration `0036_alert_rule_threshold_ms` adds `alert_rules.threshold_ms`.
 - **Pause monitoring per device** — devices can be paused from the device form or the Pause/Resume button in device details. Paused devices are skipped by live/background probes (no false offline alerts), show a gray "paused" status in Monitoring (with a Paused filter and fleet paused count), and stay in inventory/topology. Migration `0037_device_monitoring_fields`.
 - **Device lifecycle states** — devices carry a lifecycle of planned / active / retired / ignored. Only active devices are monitored; the rest render as paused in Monitoring and show a lifecycle badge in device details.
@@ -20,6 +24,11 @@
 - **Instant Monitoring re-entry** — the Monitoring workspace keeps an in-memory stale-while-revalidate snapshot of the fleet summary, device table, and service checks. Returning to Monitoring renders the last known data immediately, then refreshes with a lightweight delta request when fresh or a full refresh when stale.
 
 ### Fixed
+- **Refreshing the browser on the IPAM page** no longer bounces to Overview — the router now restores every route, including `/ipam`.
+- **Expired sessions mid-action recover transparently** — if the access token expires while the app is open (e.g. after laptop sleep), the next API call refreshes the session and retries once instead of surfacing a 401 error.
+- **Background token refresh no longer flashes the loading screen** — the hourly session refresh (and any transparent 401 recovery) keeps the current page rendered instead of re-running the app bootstrap.
+- **Modals are keyboard-trapped and restore focus** — Tab cycles within any open modal, background scrolling is locked, and focus returns to the triggering control on close.
+- **Browser tab titles** now reflect the current page (e.g. "NetMap — Monitoring").
 - **Scheduled discovery IP conflicts are review-only** — when a scheduled scan finds a MAC-matched device at an IP that already belongs to a *different* inventory device, the move is no longer misattributed as a field change on the occupying device. It now creates an `ip_change` observation against the MAC-matched device for manual review, and the IP is never auto-applied onto an occupied address.
 - **Topology link form** endpoint pickers now render above the modal scroll layer with an opaque dropdown surface, preventing the source/target menu from being clipped, hidden, or see-through while creating or editing links.
 - **Topology links dropdown** now uses fixed source/target/type columns so long link labels no longer shift row spacing.

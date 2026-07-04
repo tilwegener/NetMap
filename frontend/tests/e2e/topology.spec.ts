@@ -31,40 +31,45 @@ test.describe("Topology workspace", () => {
     await expect(overlayNodes).toHaveCount(2, { timeout: 8000 });
   });
 
-  test("clicking a device node position opens the details panel", async ({ page }) => {
-    const firstNode = page.locator(".topology-overlay-node").first();
-    await firstNode.waitFor({ state: "visible", timeout: 8000 });
-    // Overlay has pointer-events: none; click the canvas at the node's screen position
-    const box = await firstNode.boundingBox();
-    if (box) {
-      await page.locator(".graph-canvas").click({ position: { x: box.x + box.width / 2, y: box.y + box.height / 2 }, force: true });
-    }
+  // Selecting a device via the entity list is the stable, user-visible path
+  // (canvas-coordinate clicks against cytoscape are timing/position dependent).
+  async function openDevicesList(page: import("@playwright/test").Page) {
+    const devicesBtn = page.locator(".topo-stat-btn--devices");
+    await devicesBtn.waitFor({ state: "visible", timeout: 8000 });
+    await devicesBtn.click();
+  }
+
+  test("selecting a device opens the details panel", async ({ page }) => {
+    await openDevicesList(page);
+    const row = page.locator(".topo-entity-row", { hasText: "router-01" }).first();
+    await row.waitFor({ state: "visible", timeout: 8000 });
+    await row.click();
     await expect(page.locator(".details-panel")).toBeVisible({ timeout: 4000 });
   });
 
-  test("clicking a device node position marks it as selected", async ({ page }) => {
-    const firstNode = page.locator(".topology-overlay-node").first();
-    await firstNode.waitFor({ state: "visible", timeout: 8000 });
-    const box = await firstNode.boundingBox();
-    if (box) {
-      await page.locator(".graph-canvas").click({ position: { x: box.x + box.width / 2, y: box.y + box.height / 2 }, force: true });
-    }
-    await expect(firstNode).toHaveClass(/selected/, { timeout: 4000 });
+  test("selecting a device marks its overlay node as selected", async ({ page }) => {
+    await openDevicesList(page);
+    const row = page.locator(".topo-entity-row", { hasText: "router-01" }).first();
+    await row.waitFor({ state: "visible", timeout: 8000 });
+    await row.click();
+    const selectedNode = page.locator(".topology-overlay-node.selected");
+    await expect(selectedNode).toHaveCount(1, { timeout: 4000 });
+    await expect(selectedNode).toHaveAttribute("title", "router-01");
   });
 
-  test("clicking a second device position changes selection", async ({ page }) => {
-    const nodes = page.locator(".topology-overlay-node");
-    await nodes.first().waitFor({ state: "visible", timeout: 8000 });
-    const canvas = page.locator(".graph-canvas");
+  test("selecting a second device changes selection", async ({ page }) => {
+    await openDevicesList(page);
+    const firstRow = page.locator(".topo-entity-row", { hasText: "router-01" }).first();
+    await firstRow.waitFor({ state: "visible", timeout: 8000 });
+    await firstRow.click();
+    await expect(page.locator(".topology-overlay-node.selected")).toHaveAttribute("title", "router-01", { timeout: 4000 });
 
-    const box1 = await nodes.first().boundingBox();
-    if (box1) await canvas.click({ position: { x: box1.x + box1.width / 2, y: box1.y + box1.height / 2 }, force: true });
-    await expect(nodes.first()).toHaveClass(/selected/, { timeout: 4000 });
-
-    const box2 = await nodes.last().boundingBox();
-    if (box2) await canvas.click({ position: { x: box2.x + box2.width / 2, y: box2.y + box2.height / 2 }, force: true });
-    await expect(nodes.last()).toHaveClass(/selected/, { timeout: 4000 });
-    await expect(nodes.first()).not.toHaveClass(/selected/);
+    // Selecting a row closes the entity list; reopen it for the second pick.
+    await openDevicesList(page);
+    const secondRow = page.locator(".topo-entity-row", { hasText: "switch-01" }).first();
+    await secondRow.click();
+    await expect(page.locator(".topology-overlay-node.selected")).toHaveCount(1, { timeout: 4000 });
+    await expect(page.locator(".topology-overlay-node.selected")).toHaveAttribute("title", "switch-01");
   });
 
   test("overlay device node titles match hostnames", async ({ page }) => {

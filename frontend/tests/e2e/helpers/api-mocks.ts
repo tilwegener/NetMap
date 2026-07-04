@@ -26,6 +26,12 @@ export function mockDevice(overrides: Record<string, unknown> = {}) {
     notes: "",
     site_id: null,
     is_favourite: false,
+    tags: [],
+    mac_address: null,
+    vendor: null,
+    device_type: null,
+    os: null,
+    description: null,
     updated_at: "2026-01-01T00:00:00Z",
     ...overrides,
   };
