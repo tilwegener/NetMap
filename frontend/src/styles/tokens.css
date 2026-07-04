@@ -26,6 +26,7 @@
   --nm-danger-soft: rgba(217, 75, 75, 0.1);
   --nm-warning-soft: rgba(212, 145, 44, 0.12);
   --nm-success-soft: rgba(45, 157, 120, 0.12);
+  --nm-row-hover: #e7edf2;
   --nm-radius-sm: 6px;
   --nm-radius-md: 8px;
   --nm-radius-lg: 10px;
