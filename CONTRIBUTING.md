@@ -144,12 +144,25 @@ NetMap uses `CHANGELOG.md` as the single source of truth for release notes:
 2. Mirror to `test/`, push branch `test`, and validate the Docker Hub test image.
 3. Merge to `main`, tag `vX.Y.Z`, and push the tag.
 
+| Push target | Docker Hub | GitHub Release |
+|---|---|---|
+| `test` branch | `xoriin/netmap:test` | No |
+| `v*` tag on `main` | `xoriin/netmap:vX.Y.Z` + `latest` | Yes (from `CHANGELOG.md`) |
+
 Pushing a `v*` tag runs CI that:
 
 - builds and publishes the Docker Hub release image (`xoriin/netmap:vX.Y.Z` and `latest`), and
-- publishes a **GitHub Release** for the same tag using the matching `CHANGELOG.md` section (`scripts/release-notes-from-changelog.py`). Existing releases are updated in place; new tags create a verified release marked as latest.
+- publishes a **GitHub Release** for the same tag using the matching `CHANGELOG.md` section (`scripts/release-notes-from-changelog.py`).
 
-The in-app What's New modal reads the same baked `CHANGELOG.md` from the running image, so you do not maintain a separate release-notes document. Do not hand-write GitHub release bodies anymore; edit `CHANGELOG.md` only.
+Pushing the **`test` branch does not create a GitHub Release** — it only builds `xoriin/netmap:test`.
+
+The in-app What's New modal reads the same baked `CHANGELOG.md`. It opens **after install/upgrade**, not when a newer tag is merely available. Do not hand-write GitHub release bodies — edit `CHANGELOG.md` only.
+
+Preview release notes locally:
+
+```bash
+python3 scripts/release-notes-from-changelog.py v1.3.1
+```
 
 ---
 
