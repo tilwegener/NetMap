@@ -2,6 +2,7 @@ import { useState, useEffect, type ReactNode } from "react";
 import { LogOut, Moon, PanelLeftClose, PanelLeftOpen, Sun } from "lucide-react";
 import { type AppRoute, appRoutes, appRouteByHref, appRouteCopy } from "./routes";
 import { type User, type VersionInfo } from "./api/client";
+import { useTheme } from "./providers/ThemeProvider";
 
 export function Sidebar({
   canAccessAdmin,
@@ -10,10 +11,8 @@ export function Sidebar({
   collapsed,
   currentRoute,
   onLogout,
-  onToggleTheme,
   onToggleCollapse,
   openObservationCount,
-  theme,
   onNavigate,
   versionInfo,
 }: {
@@ -23,13 +22,12 @@ export function Sidebar({
   collapsed: boolean;
   currentRoute: AppRoute;
   onLogout: () => void;
-  onToggleTheme: () => void;
   onToggleCollapse: () => void;
   openObservationCount?: number;
-  theme: "light" | "dark";
   onNavigate: (route: AppRoute) => void;
   versionInfo: VersionInfo | null;
 }) {
+  const { theme, toggleTheme } = useTheme();
   const versionLabel = versionInfo
     ? `${versionInfo.channel ? `${versionInfo.channel}: ` : "v"}${versionInfo.current}`
     : "";
@@ -89,7 +87,7 @@ export function Sidebar({
             );
           })}
       </nav>
-      <button className="sidebar-theme-toggle" type="button" onClick={onToggleTheme} title={collapsed ? (theme === "dark" ? "Light mode" : "Dark mode") : undefined}>
+      <button className="sidebar-theme-toggle" type="button" onClick={toggleTheme} title={collapsed ? (theme === "dark" ? "Light mode" : "Dark mode") : undefined}>
         {theme === "dark" ? <Sun size={16} aria-hidden="true" /> : <Moon size={16} aria-hidden="true" />}
         {!collapsed && (theme === "dark" ? "Light mode" : "Dark mode")}
       </button>

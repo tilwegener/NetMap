@@ -1,5 +1,21 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useRef } from "react";
 import { X } from "lucide-react";
+
+const FOCUSABLE_SELECTOR =
+  'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+// Counter so stacked modals only release the body scroll lock when the last one closes.
+let openModalCount = 0;
+
+function lockBodyScroll() {
+  openModalCount += 1;
+  if (openModalCount === 1) document.body.style.overflow = "hidden";
+}
+
+function unlockBodyScroll() {
+  openModalCount = Math.max(0, openModalCount - 1);
+  if (openModalCount === 0) document.body.style.overflow = "";
+}
 
 export type ModalSize = "sm" | "md" | "lg" | "xl";
 
@@ -39,13 +55,57 @@ export function Modal({
   title: string;
   wide?: boolean;
 }) {
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") onCancel();
+      if (event.key === "Escape") {
+        onCancel();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const dialog = dialogRef.current;
+      if (!dialog) return;
+      const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR))
+        .filter((el) => el.offsetParent !== null || el === document.activeElement);
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement as HTMLElement | null;
+      const inside = active !== null && dialog.contains(active);
+      if (event.shiftKey) {
+        if (!inside || active === first) {
+          event.preventDefault();
+          last.focus();
+        }
+      } else if (!inside || active === last) {
+        event.preventDefault();
+        first.focus();
+      }
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [onCancel]);
+
+  useEffect(() => {
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    lockBodyScroll();
+    const dialog = dialogRef.current;
+    if (dialog && !dialog.contains(document.activeElement)) {
+      const target =
+        dialog.querySelector<HTMLElement>("[autofocus]") ??
+        Array.from(dialog.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR))
+          .find((el) => !el.classList.contains("modal-close-btn") && el.offsetParent !== null) ??
+        dialog.querySelector<HTMLElement>(FOCUSABLE_SELECTOR);
+      target?.focus();
+    }
+    return () => {
+      unlockBodyScroll();
+      if (previouslyFocused && document.contains(previouslyFocused)) {
+        previouslyFocused.focus();
+      }
+    };
+  }, []);
 
   return (
     <div
@@ -58,6 +118,7 @@ export function Modal({
       }}
     >
       <div
+        ref={dialogRef}
         className={[modalSizeClass(size, wide), modalClassName].filter(Boolean).join(" ")}
         onMouseDown={(event) => event.stopPropagation()}
       >

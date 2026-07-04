@@ -47,6 +47,7 @@ function LoginForm({
           Username
           <input
             autoComplete="username"
+            autoFocus
             required
             value={username}
             onChange={(event) => setUsername(event.target.value)}
@@ -123,6 +124,7 @@ function ForgotPasswordView({ onBack, appName }: { onBack: () => void; appName?:
               Username or email
               <input
                 required
+                autoFocus
                 autoComplete="username email"
                 value={identifier}
                 onChange={(event) => setIdentifier(event.target.value)}

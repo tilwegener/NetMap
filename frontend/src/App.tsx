@@ -2,16 +2,14 @@ import { useState, useEffect, useMemo, useRef, type ReactNode } from "react";
 import { Moon, Sun } from "lucide-react";
 import {
   type DashboardSummary, type Device, type DeviceMonitorSummary, type DeviceStatus, type SystemSettings, type TokenPair,
-  type TopologyGraph, type User, type VersionInfo, api,
+  type TopologyGraph, type User, type VersionInfo, api, subscribeTokenRefresh,
 } from "./api/client";
-import { themeStorageKey, iconPackStorageKey } from "./constants";
-import {
-  builtInIconPack, loadIconPacks, readLocalIconPacks, writeLocalIconPacks,
-  applyIconPackSelection, refreshDeviceTypeIconMap, type IconPack,
-} from "./icons";
+import { useTheme } from "./providers/ThemeProvider";
+import { storageKeys, readBool, writeBool } from "./utils/storage";
 import {
   type AppRoute,
   readStoredTokens, storeTokens, readRouteFromLocation, navigateToRoute, isMethodNotAllowedError,
+  routeBodyClass, routeDocumentTitle,
 } from "./routes";
 import { TopbarNoteCtx } from "./context";
 import { LoadingView } from "./views/LoadingView";
@@ -34,16 +32,8 @@ export function App() {
   const [appSettings, setAppSettings] = useState<SystemSettings | null>(null);
   const [topbarNote, setTopbarNote] = useState<ReactNode>("");
   const idleTimeoutMs = (appSettings?.idle_timeout_minutes ?? 15) * 60 * 1000;
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => window.localStorage.getItem("netmap.sidebar_collapsed") === "1");
-  const [theme, setTheme] = useState<"light" | "dark">(() => {
-    const stored = window.localStorage.getItem(themeStorageKey);
-    return stored === "light" ? "light" : "dark";
-  });
-  const [iconPacks, setIconPacks] = useState<IconPack[]>([]);
-  const [localIconPacks, setLocalIconPacks] = useState<IconPack[]>(() => readLocalIconPacks());
-  const [iconPackLoading, setIconPackLoading] = useState(true);
-  const [activeIconPackId, setActiveIconPackId] = useState(() => window.localStorage.getItem(iconPackStorageKey) || builtInIconPack.id);
-  const [iconPackError, setIconPackError] = useState<string | null>(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => readBool(storageKeys.sidebarCollapsed));
+  const { theme, toggleTheme } = useTheme();
   const [versionInfo, setVersionInfo] = useState<VersionInfo | null>(null);
   const [showWhatsNew, setShowWhatsNew] = useState(false);
   const topologyRefreshRequestIdRef = useRef(0);
@@ -102,69 +92,26 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    window.localStorage.setItem(themeStorageKey, theme);
-    document.body.classList.toggle("theme-dark", theme === "dark");
-  }, [theme]);
-
-  useEffect(() => {
-    let cancelled = false;
-    async function bootstrapIconPacks() {
-      setIconPackLoading(true);
-      const loaded = await loadIconPacks();
-      if (cancelled) return;
-      setIconPacks(loaded);
-      setIconPackLoading(false);
-      setIconPackError(null);
-    }
-    void bootstrapIconPacks();
+    const bodyClass = routeBodyClass(currentRoute);
+    document.body.classList.add(bodyClass);
+    document.title = routeDocumentTitle(currentRoute);
     return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    writeLocalIconPacks(localIconPacks);
-  }, [localIconPacks]);
-
-  useEffect(() => {
-    const merged = [...iconPacks];
-    localIconPacks.forEach((pack) => {
-      const existingIndex = merged.findIndex((row) => row.id === pack.id);
-      if (existingIndex >= 0) merged[existingIndex] = pack;
-      else merged.push(pack);
-    });
-    const available = [builtInIconPack, ...merged];
-    const selected = available.some((pack) => pack.id === activeIconPackId) ? activeIconPackId : builtInIconPack.id;
-    applyIconPackSelection(available, selected);
-    refreshDeviceTypeIconMap();
-    if (selected !== activeIconPackId) {
-      setActiveIconPackId(selected);
-      setIconPackError("Selected icon pack was not found; reverted to Built-in.");
-      return;
-    }
-    window.localStorage.setItem(iconPackStorageKey, selected);
-  }, [activeIconPackId, iconPacks, localIconPacks]);
-
-  useEffect(() => {
-    document.body.classList.toggle("route-topology", currentRoute === "/topology");
-    document.body.classList.toggle("route-security", currentRoute === "/security");
-    document.body.classList.toggle("route-inventory", currentRoute === "/inventory");
-    document.body.classList.toggle("route-vlans", currentRoute === "/vlans");
-    document.body.classList.toggle("route-locations", currentRoute === "/locations");
-    document.body.classList.toggle("route-monitoring", currentRoute === "/monitoring");
-    document.body.classList.toggle("route-ipam", currentRoute === "/ipam");
-    return () => {
-      document.body.classList.remove("route-topology");
-      document.body.classList.remove("route-security");
-      document.body.classList.remove("route-inventory");
-      document.body.classList.remove("route-vlans");
-      document.body.classList.remove("route-locations");
-      document.body.classList.remove("route-monitoring");
-      document.body.classList.remove("route-ipam");
+      document.body.classList.remove(bodyClass);
     };
   }, [currentRoute]);
 
+  // Adopt tokens rotated inside the API client (proactive refresh or a
+  // transparent 401 retry) so subsequent calls use the fresh access token.
+  useEffect(() => subscribeTokenRefresh(setTokens), []);
+
+  const bootstrapDoneRef = useRef(false);
+
   useEffect(() => {
+    // A token rotation for an already-authenticated session must not re-run
+    // the bootstrap (it would flash the loading screen and refetch everything).
+    if (bootstrapDoneRef.current && tokens?.access_token) {
+      return;
+    }
     let cancelled = false;
     async function bootstrap() {
       setLoading(true);
@@ -200,6 +147,7 @@ export function App() {
           return;
         }
         setUser(currentUser);
+        bootstrapDoneRef.current = true;
 
         const [dashboardResult, topologyResult] = await Promise.allSettled([
           api.dashboardSummary(token),
@@ -280,6 +228,7 @@ export function App() {
     } catch {
       // Session cleanup must proceed even when server-side revoke fails.
     }
+    bootstrapDoneRef.current = false;
     storeTokens(null);
     setTokens(null);
     setUser(null);
@@ -494,7 +443,7 @@ export function App() {
           <button
             className="auth-theme-toggle"
             type="button"
-            onClick={() => setTheme((current) => (current === "dark" ? "light" : "dark"))}
+            onClick={toggleTheme}
           >
             {theme === "dark" ? <Sun size={15} aria-hidden="true" /> : <Moon size={15} aria-hidden="true" />}
             {theme === "dark" ? "Light mode" : "Dark mode"}
@@ -528,16 +477,14 @@ export function App() {
         collapsed={sidebarCollapsed}
         currentRoute={currentRoute}
         onLogout={() => void handleLogout("user")}
-        onToggleTheme={() => setTheme((current) => (current === "dark" ? "light" : "dark"))}
         onToggleCollapse={() => {
           setSidebarCollapsed((c) => {
             const next = !c;
-            window.localStorage.setItem("netmap.sidebar_collapsed", next ? "1" : "0");
+            writeBool(storageKeys.sidebarCollapsed, next);
             return next;
           });
         }}
         openObservationCount={openObservationCount}
-        theme={theme}
         onNavigate={(route) => {
           if (route === currentRoute) {
             return;
@@ -577,35 +524,8 @@ export function App() {
             onUserUpdate={setUser}
             onObservationActioned={refreshObservationCount}
             openObservationCount={openObservationCount}
-            theme={theme}
             summary={summary}
             user={user}
-            activeIconPackId={activeIconPackId}
-            iconPackLoading={iconPackLoading}
-            iconPacks={iconPacks}
-            localIconPacks={localIconPacks}
-            iconPackError={iconPackError}
-            onSelectIconPack={(packId) => {
-              setIconPackError(null);
-              setActiveIconPackId(packId);
-            }}
-            onAddLocalIconPack={(pack) => {
-              setLocalIconPacks((current) => {
-                const index = current.findIndex((row) => row.id === pack.id);
-                if (index >= 0) {
-                  const next = [...current];
-                  next[index] = pack;
-                  return next;
-                }
-                return [...current, pack];
-              });
-            }}
-            onRemoveLocalIconPack={(packId) => {
-              setLocalIconPacks((current) => current.filter((row) => row.id !== packId));
-              if (activeIconPackId === packId) {
-                setActiveIconPackId(builtInIconPack.id);
-              }
-            }}
             onOpenWhatsNew={openWhatsNew}
             versionInfo={versionInfo}
           />

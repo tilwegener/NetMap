@@ -1,6 +1,7 @@
 import { Activity, Globe, Home, Network, Settings, MapPin, Wrench, Shield, Download, UserCircle } from "lucide-react";
-import type { TokenPair } from "../api/client";
+import { ApiError, type TokenPair } from "../api/client";
 import { tokenStorageKey } from "../constants";
+import { removeKey } from "../utils/storage";
 
 export type AppRoute = "/overview" | "/topology" | "/inventory" | "/vlans" | "/locations" | "/monitoring" | "/ipam" | "/tools" | "/security" | "/exports" | "/admin" | "/profile";
 
@@ -47,33 +48,29 @@ export const appRouteCopy: Record<AppRoute, { title: string; subtitle: string }>
 
 export function readStoredTokens(): TokenPair | null {
   // Tokens are no longer stored in localStorage; clear any legacy values.
-  window.localStorage.removeItem(tokenStorageKey);
+  removeKey(tokenStorageKey);
   return null;
 }
 
 export function storeTokens(_tokens: TokenPair | null) {
   // Tokens are kept in React state only. The refresh token lives in an
   // HttpOnly cookie set by the server; the access token lives in memory.
-  window.localStorage.removeItem(tokenStorageKey);
+  removeKey(tokenStorageKey);
 }
 
 export function readRouteFromLocation(): AppRoute {
-  const pathname = window.location.pathname;
-  if (
-    pathname === "/topology" ||
-    pathname === "/inventory" ||
-    pathname === "/vlans" ||
-    pathname === "/locations" ||
-    pathname === "/monitoring" ||
-    pathname === "/tools" ||
-    pathname === "/security" ||
-    pathname === "/exports" ||
-    pathname === "/admin" ||
-    pathname === "/profile"
-  ) {
-    return pathname;
-  }
-  return "/overview";
+  const pathname = window.location.pathname as AppRoute;
+  return appRouteByHref.has(pathname) ? pathname : "/overview";
+}
+
+/** CSS body class for a route, e.g. "/topology" → "route-topology". */
+export function routeBodyClass(route: AppRoute): string {
+  return `route-${route.slice(1)}`;
+}
+
+export function routeDocumentTitle(route: AppRoute): string {
+  const copy = appRouteCopy[route];
+  return copy ? `NetMap — ${copy.title}` : "NetMap";
 }
 
 export function navigateToRoute(route: AppRoute, replace = false) {
@@ -82,6 +79,5 @@ export function navigateToRoute(route: AppRoute, replace = false) {
 }
 
 export function isMethodNotAllowedError(error: Error): boolean {
-  const message = (error.message || "").toLowerCase();
-  return message.includes("method not allowed") || message.includes("status 405") || message.includes("status: 405") || message.includes("405");
+  return error instanceof ApiError && error.status === 405;
 }

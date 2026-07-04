@@ -9,6 +9,8 @@ import {
   type DeviceSecurityEventSummary, type TopologyLayout, type DeviceIcon, type SnmpProfile,
 } from "../../api/client";
 import { type DiagramLayout, type DiagramLayoutOptions } from "../../types";
+import { useConfirm } from "../../components/ConfirmDialog";
+import { useIconPacks } from "../../providers/IconPackProvider";
 import {
   groupId, buildDiagramLayout,
   savedTopologyLayoutKey, readTopologyDisplayPrefs, writeTopologyDisplayPrefs,
@@ -32,9 +34,14 @@ import { DiscoveryModal } from "./DiscoveryModal";
 const DEFAULT_EDGE_LABEL_FONT_SIZE = 15;
 const DEFAULT_NODE_LABEL_FONT_SIZE = 11;
 
+// Cytoscape's Css typings do not include the non-standard shadow-* extension
+// properties; funnel them through one typed boundary instead of scattered casts.
+function cyExtendedStyle(style: Record<string, string | number>): cytoscape.Css.Node {
+  return style as unknown as cytoscape.Css.Node;
+}
+
 export function TopologyWorkspace({
   accessToken,
-  activeIconPackId,
   canViewSecurity,
   canWrite,
   graph,
@@ -46,7 +53,6 @@ export function TopologyWorkspace({
   userId,
 }: {
   accessToken: string | null;
-  activeIconPackId: string;
   canViewSecurity: boolean;
   canWrite: boolean;
   graph: TopologyGraph;
@@ -63,6 +69,8 @@ export function TopologyWorkspace({
   const fitOnNextRenderRef = useRef(true);
   const skipPersistOnNextRenderRef = useRef(false);
   const knownGroupIdsRef = useRef<Set<string>>(new Set());
+  const confirmAction = useConfirm();
+  const { activeIconPackId } = useIconPacks();
   const [selectedDeviceId, setSelectedDeviceId] = useState<number | null>(null);
   const [selectedRelationshipId, setSelectedRelationshipId] = useState<number | null>(null);
   const [expandedEntitySection, setExpandedEntitySection] = useState<"devices" | "relationships" | "groups" | null>(null);
@@ -743,8 +751,7 @@ export function TopologyWorkspace({
           },
           {
             selector: "node.device.panel-hover",
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            style: {
+            style: cyExtendedStyle({
               "shadow-blur": 22,
               "shadow-color": "#1d9ab0",
               "shadow-opacity": 0.55,
@@ -752,18 +759,17 @@ export function TopologyWorkspace({
               "shadow-offset-y": 0,
               opacity: 1,
               "z-index": 80,
-            } as any,
+            }),
           },
           {
             selector: "node.zone.panel-hover",
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            style: {
+            style: cyExtendedStyle({
               "shadow-blur": 18,
               "shadow-color": "#8040c0",
               "shadow-opacity": 0.4,
               "shadow-offset-x": 0,
               "shadow-offset-y": 0,
-            } as any,
+            }),
           },
           {
             selector: "edge.panel-hover",
@@ -1235,7 +1241,13 @@ export function TopologyWorkspace({
     if (!accessToken || !selectedRelationship) {
       return;
     }
-    if (!window.confirm(`Delete link "${selectedRelationship.relationship_type}"?`)) {
+    const confirmed = await confirmAction({
+      title: "Delete link",
+      message: `Delete the "${selectedRelationship.relationship_type}" link between these devices?`,
+      detail: "The devices themselves are not affected.",
+      confirmLabel: "Delete link",
+    });
+    if (!confirmed) {
       return;
     }
     setBusy(true);

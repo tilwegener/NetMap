@@ -2,8 +2,10 @@ import { lazy, Suspense, useState, useEffect, useCallback } from "react";
 import {
   api, type User, type TopologyGraph, type DashboardSummary, type Device, type VersionInfo,
 } from "../api/client";
-import { type AppRoute } from "../routes";
-import { type IconPack } from "../icons";
+import { type AppRoute, appRouteCopy } from "../routes";
+import { ErrorBoundary } from "../components/ErrorBoundary";
+import { WorkspaceSkeleton } from "../components/Skeleton";
+import { useTheme } from "../providers/ThemeProvider";
 
 const OverviewWorkspace = lazy(() =>
   import("../features/overview/OverviewWorkspace").then((m) => ({ default: m.OverviewWorkspace }))
@@ -56,17 +58,8 @@ export function DashboardView({
   onSettingsChange,
   onObservationActioned,
   openObservationCount,
-  theme,
   user,
   summary,
-  activeIconPackId,
-  iconPackLoading,
-  iconPacks,
-  localIconPacks,
-  iconPackError,
-  onSelectIconPack,
-  onAddLocalIconPack,
-  onRemoveLocalIconPack,
   onOpenWhatsNew,
   versionInfo,
 }: {
@@ -83,20 +76,12 @@ export function DashboardView({
   onSettingsChange: (settings: import("../api/client").SystemSettings) => void;
   onObservationActioned?: () => void;
   openObservationCount?: number;
-  theme: "light" | "dark";
   user: User;
   summary: DashboardSummary | null;
-  activeIconPackId: string;
-  iconPackLoading: boolean;
-  iconPacks: IconPack[];
-  localIconPacks: IconPack[];
-  iconPackError: string | null;
-  onSelectIconPack: (packId: string) => void;
-  onAddLocalIconPack: (pack: IconPack) => void;
-  onRemoveLocalIconPack: (packId: string) => void;
   onOpenWhatsNew: () => void;
   versionInfo: VersionInfo | null;
 }) {
+  const { theme } = useTheme();
   const canWrite = user.role === "SuperAdmin" || user.role === "NetworkAdmin";
   const canViewSecurity = user.role === "SuperAdmin" || user.role === "NetworkAdmin" || user.role === "SecurityAnalyst";
   const [jumpTarget, setJumpTarget] = useState<{ deviceId: number; token: number } | null>(null);
@@ -132,7 +117,8 @@ export function DashboardView({
   }
 
   return (
-    <Suspense fallback={<div className="workspace-loading" />}>
+    <ErrorBoundary label={`The ${appRouteCopy[currentRoute]?.title ?? "current"} workspace`} resetKey={currentRoute}>
+    <Suspense fallback={<WorkspaceSkeleton />}>
       {currentRoute === "/overview" && (
         <OverviewWorkspace
           accessToken={accessToken}
@@ -152,7 +138,6 @@ export function DashboardView({
       {currentRoute === "/topology" && (
         <TopologyWorkspace
           accessToken={accessToken}
-          activeIconPackId={activeIconPackId}
           canViewSecurity={canViewSecurity}
           canWrite={canWrite}
           graph={graph}
@@ -215,14 +200,6 @@ export function DashboardView({
           accessToken={accessToken}
           graph={graph}
           summary={summary}
-          activeIconPackId={activeIconPackId}
-          iconPackLoading={iconPackLoading}
-          iconPacks={iconPacks}
-          localIconPacks={localIconPacks}
-          iconPackError={iconPackError}
-          onSelectIconPack={onSelectIconPack}
-          onAddLocalIconPack={onAddLocalIconPack}
-          onRemoveLocalIconPack={onRemoveLocalIconPack}
           onSettingsChange={onSettingsChange}
           onOpenWhatsNew={onOpenWhatsNew}
           versionInfo={versionInfo}
@@ -232,5 +209,6 @@ export function DashboardView({
         <ProfileWorkspace accessToken={accessToken} user={user} onUserUpdate={onUserUpdate} />
       )}
     </Suspense>
+    </ErrorBoundary>
   );
 }

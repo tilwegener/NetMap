@@ -869,50 +869,110 @@ type RequestOptions = RequestInit & {
   token?: string | null;
 };
 
+/**
+ * Typed API failure. `status` is the HTTP status code; `detail` is the parsed
+ * FastAPI `detail` payload when one was present. `message` stays human-readable
+ * so existing `err.message` rendering keeps working.
+ */
+export class ApiError extends Error {
+  readonly status: number;
+  readonly detail: unknown;
+
+  constructor(status: number, message: string, detail?: unknown) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.detail = detail;
+  }
+}
+
 // Deduplicate concurrent refresh calls (e.g. React StrictMode double-invocation)
 // so a single in-flight token rotation isn't hit twice with the same revocable token.
 let _pendingRefresh: Promise<TokenPair> | null = null;
 
-export type DownloadResult = {
-  blob: Blob;
-  filename: string;
-};
+type TokenRefreshListener = (tokens: TokenPair) => void;
+const _tokenRefreshListeners = new Set<TokenRefreshListener>();
 
-async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+/**
+ * Notifies whenever the client rotates the access token (proactive refresh or
+ * transparent 401 retry) so app state can adopt the new token.
+ */
+export function subscribeTokenRefresh(listener: TokenRefreshListener): () => void {
+  _tokenRefreshListeners.add(listener);
+  return () => _tokenRefreshListeners.delete(listener);
+}
+
+function notifyTokenRefresh(tokens: TokenPair) {
+  _tokenRefreshListeners.forEach((listener) => listener(tokens));
+}
+
+async function toApiError(response: Response): Promise<ApiError> {
+  const status = response.status;
+  let message = `HTTP ${status}`;
+  let detail: unknown;
+  try {
+    const errorBody = (await response.json()) as { detail?: unknown };
+    detail = errorBody.detail;
+    if (typeof detail === "string") {
+      message = `${detail} [${status}]`;
+    } else if (Array.isArray(detail) && detail.length > 0) {
+      // FastAPI validation error: detail is an array of {loc, msg, type} objects
+      const msgs = detail
+        .map((e) => (e && typeof e === "object" && "msg" in e ? String(e.msg) : String(e)))
+        .join("; ");
+      message = `${msgs} [${status}]`;
+    }
+  } catch {
+    message = `HTTP ${status}: ${response.statusText || "Unknown error"}`;
+  }
+  return new ApiError(status, message, detail);
+}
+
+/**
+ * A 401 on an authenticated non-auth endpoint usually means the in-memory
+ * access token expired (e.g. laptop sleep past the proactive refresh window).
+ * Rotate via the HttpOnly refresh cookie once and hand back the new token;
+ * returns null when recovery is not applicable or the refresh itself failed.
+ */
+async function recoverExpiredToken(path: string, options: RequestOptions): Promise<string | null> {
+  if (!options.token || path.startsWith("/api/v1/auth/") || path.startsWith("/api/v1/setup/")) {
+    return null;
+  }
+  try {
+    const refreshed = await api.refresh();
+    return refreshed.access_token;
+  } catch {
+    return null;
+  }
+}
+
+function buildHeaders(options: RequestOptions, json: boolean): Headers {
   const headers = new Headers(options.headers);
-  if (!headers.has("Content-Type") && options.body !== undefined) {
+  if (json && !headers.has("Content-Type") && options.body !== undefined) {
     headers.set("Content-Type", "application/json");
   }
   if (options.token) {
     headers.set("Authorization", `Bearer ${options.token}`);
   }
   addCsrfHeader(headers, options.method);
+  return headers;
+}
 
+async function request<T>(path: string, options: RequestOptions = {}, isRetry = false): Promise<T> {
   const response = await fetch(path, {
     ...options,
     credentials: "include",
-    headers,
+    headers: buildHeaders(options, true),
   });
 
   if (!response.ok) {
-    const status = response.status;
-    let message = `HTTP ${status}`;
-    try {
-      const errorBody = (await response.json()) as { detail?: unknown };
-      const detail = errorBody.detail;
-      if (typeof detail === "string") {
-        message = `${detail} [${status}]`;
-      } else if (Array.isArray(detail) && detail.length > 0) {
-        // FastAPI validation error: detail is an array of {loc, msg, type} objects
-        const msgs = detail
-          .map((e) => (e && typeof e === "object" && "msg" in e ? String(e.msg) : String(e)))
-          .join("; ");
-        message = `${msgs} [${status}]`;
+    if (response.status === 401 && !isRetry) {
+      const newToken = await recoverExpiredToken(path, options);
+      if (newToken) {
+        return request<T>(path, { ...options, token: newToken }, true);
       }
-    } catch {
-      message = `HTTP ${status}: ${response.statusText || "Unknown error"}`;
     }
-    throw new Error(message);
+    throw await toApiError(response);
   }
 
   if (response.status === 204) {
@@ -922,38 +982,26 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   return response.json() as Promise<T>;
 }
 
-async function requestBlob(path: string, options: RequestOptions = {}): Promise<DownloadResult> {
-  const headers = new Headers(options.headers);
-  if (options.token) {
-    headers.set("Authorization", `Bearer ${options.token}`);
-  }
-  addCsrfHeader(headers, options.method);
+export type DownloadResult = {
+  blob: Blob;
+  filename: string;
+};
 
+async function requestBlob(path: string, options: RequestOptions = {}, isRetry = false): Promise<DownloadResult> {
   const response = await fetch(path, {
     ...options,
     credentials: "include",
-    headers,
+    headers: buildHeaders(options, false),
   });
 
   if (!response.ok) {
-    const status = response.status;
-    let message = `HTTP ${status}`;
-    try {
-      const errorBody = (await response.json()) as { detail?: unknown };
-      const detail = errorBody.detail;
-      if (typeof detail === "string") {
-        message = `${detail} [${status}]`;
-      } else if (Array.isArray(detail) && detail.length > 0) {
-        // FastAPI validation error: detail is an array of {loc, msg, type} objects
-        const msgs = detail
-          .map((e) => (e && typeof e === "object" && "msg" in e ? String(e.msg) : String(e)))
-          .join("; ");
-        message = `${msgs} [${status}]`;
+    if (response.status === 401 && !isRetry) {
+      const newToken = await recoverExpiredToken(path, options);
+      if (newToken) {
+        return requestBlob(path, { ...options, token: newToken }, true);
       }
-    } catch {
-      message = `HTTP ${status}: ${response.statusText || "Unknown error"}`;
     }
-    throw new Error(message);
+    throw await toApiError(response);
   }
 
   const disposition = response.headers.get("Content-Disposition") ?? "";
@@ -1003,7 +1051,12 @@ export const api = {
       _pendingRefresh = request<TokenPair>("/api/v1/auth/refresh", {
         method: "POST",
         body: JSON.stringify({}),
-      }).finally(() => { _pendingRefresh = null; });
+      })
+        .then((tokens) => {
+          notifyTokenRefresh(tokens);
+          return tokens;
+        })
+        .finally(() => { _pendingRefresh = null; });
     }
     return _pendingRefresh;
   },

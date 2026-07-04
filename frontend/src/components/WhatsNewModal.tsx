@@ -1,18 +1,19 @@
 import { ExternalLink } from "lucide-react";
 import { type ChangelogRelease, type VersionInfo } from "../api/client";
 import { Modal } from "./Modal";
+import { readString, writeString } from "../utils/storage";
 
 export const whatsNewAcknowledgedKey = "netmap.whatsNew.acknowledgedVersion";
 
 export function shouldShowWhatsNew(versionInfo: VersionInfo | null) {
   if (!versionInfo?.current) return false;
-  const acknowledged = window.localStorage.getItem(whatsNewAcknowledgedKey);
+  const acknowledged = readString(whatsNewAcknowledgedKey);
   if (!acknowledged) return true;
   return acknowledged !== versionInfo.current;
 }
 
 export function dismissWhatsNew(version: string) {
-  window.localStorage.setItem(whatsNewAcknowledgedKey, version);
+  writeString(whatsNewAcknowledgedKey, version);
 }
 
 function ChangelogItem({ text }: { text: string }) {

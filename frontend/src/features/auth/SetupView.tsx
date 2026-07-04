@@ -32,6 +32,7 @@ export function SetupView({ onSubmit }: { onSubmit: (username: string, password:
           Username
           <input
             autoComplete="username"
+            autoFocus
             minLength={3}
             maxLength={80}
             pattern="[A-Za-z0-9_.-]+"
@@ -42,6 +43,7 @@ export function SetupView({ onSubmit }: { onSubmit: (username: string, password:
         </label>
         <label>
           Password
+          <span className="auth-field-hint">At least 12 characters</span>
           <input
             autoComplete="new-password"
             minLength={12}
