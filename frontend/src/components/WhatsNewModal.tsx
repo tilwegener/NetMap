@@ -1,4 +1,6 @@
+import DOMPurify from "dompurify";
 import { ExternalLink } from "lucide-react";
+import { marked } from "marked";
 import { type ChangelogRelease, type VersionInfo } from "../api/client";
 import { Modal } from "./Modal";
 import { readString, writeString } from "../utils/storage";
@@ -16,17 +18,33 @@ export function dismissWhatsNew(version: string) {
   writeString(whatsNewAcknowledgedKey, version);
 }
 
+function renderInlineMarkdown(markdown: string) {
+  const html = marked.parseInline(markdown, {
+    async: false,
+    breaks: true,
+    gfm: true,
+  });
+  return DOMPurify.sanitize(html, {
+    ALLOWED_ATTR: ["href", "title"],
+    ALLOWED_TAGS: ["a", "br", "code", "del", "em", "s", "strong"],
+  });
+}
+
+function MarkdownInline({ text }: { text: string }) {
+  return (
+    <span
+      className="whats-new-markdown"
+      dangerouslySetInnerHTML={{ __html: renderInlineMarkdown(text) }}
+    />
+  );
+}
+
 function ChangelogItem({ text }: { text: string }) {
-  const match = text.match(/^\*\*(.+?)\*\*(?:\s[—-]\s(.*))?$/s);
-  if (match) {
-    return (
-      <li>
-        <strong>{match[1]}</strong>
-        {match[2] ? <> — {match[2]}</> : null}
-      </li>
-    );
-  }
-  return <li>{text.replace(/\*\*(.+?)\*\*/g, "$1")}</li>;
+  return (
+    <li>
+      <MarkdownInline text={text} />
+    </li>
+  );
 }
 
 function ChangelogReleaseBlock({ release }: { release: ChangelogRelease }) {
