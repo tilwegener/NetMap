@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useState , memo } from "react";
 import type { MonitorHistoryPoint } from "../api/client";
 import { beatBg, sampleHistory } from "../utils/monitoring";
 
-export function HeartbeatBar({ beats, size = "sm" }: { beats: string[]; size?: "sm" | "lg" }) {
+function HeartbeatBarImpl({ beats, size = "sm" }: { beats: string[]; size?: "sm" | "lg" }) {
   if (beats.length === 0) return null;
   // Newest beat is always last in the array (oldest -> newest); CSS right-anchors the bar.
   const displayBeats = size === "sm" ? beats.slice(-30) : beats;
@@ -62,7 +62,7 @@ function HeartbeatTooltip({ point, x, y }: { point: MonitorHistoryPoint; x: numb
   );
 }
 
-export function HeartbeatTimeline({ history, hours }: { history: MonitorHistoryPoint[]; hours: number }) {
+function HeartbeatTimelineImpl({ history, hours }: { history: MonitorHistoryPoint[]; hours: number }) {
   const [hovered, setHovered] = useState<MonitorHistoryPoint | null>(null);
   const [pos, setPos] = useState({ x: 0, y: 0 });
 
@@ -132,3 +132,8 @@ export function HeartbeatTimeline({ history, hours }: { history: MonitorHistoryP
     </div>
   );
 }
+
+// Rendered once per monitoring/overview row on every poll cycle; memo skips
+// re-render when the beats/history arrays are referentially unchanged.
+export const HeartbeatBar = memo(HeartbeatBarImpl);
+export const HeartbeatTimeline = memo(HeartbeatTimelineImpl);

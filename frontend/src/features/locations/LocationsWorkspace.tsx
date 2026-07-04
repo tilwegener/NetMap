@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useContext, type FormEvent } from "react";
+import { useApiQuery, useApiMutation } from "../../hooks/useApiQuery";
+import { useSortableData } from "../../hooks/useSortableData";
 import { Search } from "lucide-react";
 import { IconMapPin, IconServer, IconDeviceDesktop, IconBolt } from "@tabler/icons-react";
 import { api, type Site, type TopologyGraph } from "../../api/client";
@@ -6,6 +8,7 @@ import { TopbarNoteCtx } from "../../context";
 import { blankToNull } from "../../utils/format";
 import { DashStat } from "../../components/DashStat";
 import { Modal } from "../../components/Modal";
+import { useConfirm } from "../../components/ConfirmDialog";
 
 export function LocationsWorkspace({
   accessToken,
@@ -18,25 +21,20 @@ export function LocationsWorkspace({
   graph: TopologyGraph;
   onGraphChange: () => Promise<void>;
 }) {
-  const [sites, setSites] = useState<Site[]>([]);
-  const [sitesLoading, setSitesLoading] = useState(true);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const confirmAction = useConfirm();
+  const sitesQuery = useApiQuery(() => api.sites(accessToken), [accessToken]);
+  const sites = useMemo(() => sitesQuery.data ?? [], [sitesQuery.data]);
+  const sitesLoading = sitesQuery.isLoading;
+  const [formError, setFormError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ name: '', display_name: '', description: '', address: '', color: '' });
   const [search, setSearch] = useState('');
-  const [sortKey, setSortKey] = useState('name');
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  const { sortKey, sortDir } = useSortableData<string>('name');
   const [detailSite, setDetailSite] = useState<Site | null>(null);
   const [geocodeResult, setGeocodeResult] = useState<{ lat: number; lon: number } | null | 'loading'>(null);
   const geocodeCache = useRef<Map<number, { lat: number; lon: number } | null>>(new Map());
   const setTopbarNote = useContext(TopbarNoteCtx);
-
-  function toggleSort(key: string) {
-    if (sortKey === key) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
-    else { setSortKey(key); setSortDir('asc'); }
-  }
 
   const deviceCountBySite = useMemo(() => {
     const counts = new Map<number, number>();
@@ -78,29 +76,29 @@ export function LocationsWorkspace({
     });
   }, [sites, search, sortKey, sortDir, deviceCountBySite]);
 
-  async function loadSites() {
-    setSitesLoading(true);
-    setError(null);
-    try {
-      const rows = await api.sites(accessToken);
-      setSites(rows);
-    } finally {
-      setSitesLoading(false);
-    }
-  }
+  const saveSite = useApiMutation(
+    async (payload: Parameters<typeof api.createSite>[1], siteId: number | null) => {
+      if (siteId !== null) {
+        return api.updateSite(accessToken, siteId, payload);
+      }
+      return api.createSite(accessToken, payload);
+    },
+    { errorToast: false },
+  );
 
-  useEffect(() => {
-    void loadSites().catch((err) => {
-      setError(err instanceof Error ? err.message : 'Unable to load locations');
-      setSitesLoading(false);
-    });
-  }, [accessToken]);
+  const removeSite = useApiMutation(
+    (siteId: number) => api.deleteSite(accessToken, siteId),
+    { successMessage: "Location deleted" },
+  );
+
+  const busy = saveSite.isBusy || removeSite.isBusy;
 
   function openCreateForm() {
     setDetailSite(null);
     setEditingId(null);
     setForm({ name: '', display_name: '', description: '', address: '', color: '' });
-    setError(null);
+    setFormError(null);
+    saveSite.clearError();
     setShowForm(true);
   }
 
@@ -114,13 +112,14 @@ export function LocationsWorkspace({
       address: site.address ?? '',
       color: site.color ?? '',
     });
-    setError(null);
+    setFormError(null);
+    saveSite.clearError();
     setShowForm(true);
   }
 
   function closeForm() {
     setShowForm(false);
-    setError(null);
+    setFormError(null);
   }
 
   async function showSiteDetail(site: Site) {
@@ -154,50 +153,38 @@ export function LocationsWorkspace({
     event.preventDefault();
     if (!canWrite) return;
     const name = form.name.trim();
-    if (!name) { setError('Location name is required'); return; }
-    setBusy(true);
-    setError(null);
-    try {
-      const payload = {
-        name,
-        display_name: blankToNull(form.display_name),
-        description: blankToNull(form.description),
-        address: blankToNull(form.address),
-        color: blankToNull(form.color) as string | null,
-      };
-      if (editingId !== null) {
-        await api.updateSite(accessToken, editingId, payload);
-      } else {
-        await api.createSite(accessToken, payload);
-      }
-      await loadSites();
-      await onGraphChange();
-      setShowForm(false);
-      setEditingId(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : editingId !== null ? 'Unable to update location' : 'Unable to create location');
-    } finally {
-      setBusy(false);
-    }
+    if (!name) { setFormError('Location name is required'); return; }
+    setFormError(null);
+    const saved = await saveSite.run({
+      name,
+      display_name: blankToNull(form.display_name),
+      description: blankToNull(form.description),
+      address: blankToNull(form.address),
+      color: blankToNull(form.color) as string | null,
+    }, editingId);
+    if (saved === null) return;
+    await sitesQuery.reload();
+    await onGraphChange();
+    setShowForm(false);
+    setEditingId(null);
   }
 
   async function handleDeleteSite(siteId: number, siteName: string) {
     if (!canWrite) return;
-    if (!window.confirm(`Delete location "${siteName}"? Assigned devices will be unlinked.`)) return;
-    setBusy(true);
-    setError(null);
-    try {
-      await api.deleteSite(accessToken, siteId);
-      setSites((current) => current.filter((s) => s.id !== siteId));
-      geocodeCache.current.delete(siteId);
-      await onGraphChange();
-      if (editingId === siteId) setShowForm(false);
-      if (detailSite?.id === siteId) setDetailSite(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to delete location');
-    } finally {
-      setBusy(false);
-    }
+    const confirmed = await confirmAction({
+      title: "Delete location",
+      message: `Delete location "${siteName}"?`,
+      detail: "Assigned devices will be unlinked from this location. The devices themselves are kept.",
+      confirmLabel: "Delete location",
+    });
+    if (!confirmed) return;
+    const deleted = await removeSite.run(siteId);
+    if (deleted === null) return;
+    sitesQuery.setData((current) => (current ?? []).filter((s) => s.id !== siteId));
+    geocodeCache.current.delete(siteId);
+    await onGraphChange();
+    if (editingId === siteId) setShowForm(false);
+    if (detailSite?.id === siteId) setDetailSite(null);
   }
 
   const sortCols: { key: string; label: string; sortable?: boolean }[] = [
@@ -227,7 +214,7 @@ export function LocationsWorkspace({
           {form.color && <button type="button" className="nm-btn nm-btn--sm nm-btn--ghost" onClick={() => setForm((c) => ({ ...c, color: '' }))}>Clear</button>}
         </div>
       </label>
-      {error && <p className="form-error vlan-form-grid__full">{error}</p>}
+      {(formError ?? saveSite.error) && <p className="form-error vlan-form-grid__full">{formError ?? saveSite.error}</p>}
     </div>
   );
 
@@ -268,7 +255,7 @@ export function LocationsWorkspace({
         </div>
       )}
 
-      {error && <div className="form-error" style={{ margin: '0 0 8px' }}>{error}</div>}
+      {sitesQuery.error && <div className="error-banner">{sitesQuery.error}</div>}
 
       {/* Card grid */}
       {sitesLoading ? (

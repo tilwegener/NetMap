@@ -1,9 +1,13 @@
-import { useState, useEffect, useMemo, type FormEvent } from "react";
+import { useState, useMemo, type FormEvent } from "react";
 import { ChevronUp, ChevronDown } from "lucide-react";
 import { api, type TopologyGroup, type TopologyGraph } from "../../api/client";
 import { blankToNull } from "../../utils/format";
 import { cidrUsableHosts, formatUsableHosts } from "../../utils/ip";
 import { Modal } from "../../components/Modal";
+import { useConfirm } from "../../components/ConfirmDialog";
+import { useApiQuery, useApiMutation } from "../../hooks/useApiQuery";
+import { useSortableData } from "../../hooks/useSortableData";
+import { TableSkeleton } from "../../components/Skeleton";
 
 export function VlanWorkspace({
   accessToken,
@@ -16,24 +20,15 @@ export function VlanWorkspace({
   graph: TopologyGraph;
   onGraphChange: () => Promise<void>;
 }) {
-  const [groups, setGroups] = useState<TopologyGroup[]>([]);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const confirmAction = useConfirm();
+  const groupsQuery = useApiQuery(() => api.topologyGroups(accessToken), [accessToken]);
+  const groups = useMemo(() => groupsQuery.data ?? [], [groupsQuery.data]);
+  const [formError, setFormError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ name: '', display_name: '', vlan_id: '', ip_range: '', gateway: '', dns_servers: '', description: '' });
   const [vlanSearch, setVlanSearch] = useState('');
-  const [vlanSortKey, setVlanSortKey] = useState('name');
-  const [vlanSortDir, setVlanSortDir] = useState<'asc' | 'desc'>('asc');
-
-  function toggleVlanSort(key: string) {
-    if (vlanSortKey === key) {
-      setVlanSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
-    } else {
-      setVlanSortKey(key);
-      setVlanSortDir('asc');
-    }
-  }
+  const { sortKey: vlanSortKey, sortDir: vlanSortDir, toggleSort: toggleVlanSort, ariaSort: vlanAriaSort } = useSortableData<string>('name');
   const normalizeGroupName = (value: string) => value.trim().toLowerCase();
   const normalizeLoose = (value: string) => normalizeGroupName(value).replace(/\s+/g, "");
   const tokenizeRange = (value: string) =>
@@ -111,22 +106,28 @@ export function VlanWorkspace({
   const effectiveEditingGroup =
     editingId !== null ? (groups.find((group) => group.id === editingId) ?? null) : null;
 
-  async function loadGroups() {
-    setError(null);
-    const rows = await api.topologyGroups(accessToken);
-    setGroups(rows);
-  }
+  const saveGroup = useApiMutation(
+    async (payload: Parameters<typeof api.createTopologyGroup>[1], existingGroupId: number | null) => {
+      if (existingGroupId !== null) {
+        return api.updateTopologyGroup(accessToken, existingGroupId, payload);
+      }
+      return api.createTopologyGroup(accessToken, payload);
+    },
+    { errorToast: false },
+  );
 
-  useEffect(() => {
-    void loadGroups().catch((err) => {
-      setError(err instanceof Error ? err.message : 'Unable to load groups');
-    });
-  }, [accessToken]);
+  const removeGroup = useApiMutation(
+    (groupId: number) => api.deleteTopologyGroup(accessToken, groupId),
+    { successMessage: "Group deleted" },
+  );
+
+  const busy = saveGroup.isBusy || removeGroup.isBusy;
 
   function openCreateForm(prefillName = '') {
     setEditingId(null);
     setForm({ name: prefillName, display_name: '', vlan_id: '', ip_range: '', gateway: '', dns_servers: '', description: '' });
-    setError(null);
+    setFormError(null);
+    saveGroup.clearError();
     setShowForm(true);
   }
 
@@ -141,13 +142,14 @@ export function VlanWorkspace({
       dns_servers: group.dns_servers ?? '',
       description: group.description ?? '',
     });
-    setError(null);
+    setFormError(null);
+    saveGroup.clearError();
     setShowForm(true);
   }
 
   function closeForm() {
     setShowForm(false);
-    setError(null);
+    setFormError(null);
   }
 
   async function handleFormSubmit(event: FormEvent) {
@@ -155,53 +157,41 @@ export function VlanWorkspace({
     if (!canWrite) return;
     const name = form.name.trim();
     if (!name) {
-      setError('Group name is required');
+      setFormError('Group name is required');
       return;
     }
-    setBusy(true);
-    setError(null);
-    try {
-      const existingGroupId = effectiveEditingGroup?.id ?? null;
-      const groupPayload = {
-        name,
-        display_name: blankToNull(form.display_name),
-        vlan_id: blankToNull(form.vlan_id),
-        ip_range: blankToNull(form.ip_range),
-        gateway: blankToNull(form.gateway),
-        dns_servers: blankToNull(form.dns_servers),
-        description: blankToNull(form.description),
-      };
-      if (existingGroupId !== null) {
-        await api.updateTopologyGroup(accessToken, existingGroupId, groupPayload);
-      } else {
-        await api.createTopologyGroup(accessToken, groupPayload);
-      }
-      await loadGroups();
-      await onGraphChange();
-      setShowForm(false);
-      setEditingId(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : effectiveEditingGroup ? 'Unable to update group' : 'Unable to create group');
-    } finally {
-      setBusy(false);
-    }
+    setFormError(null);
+    const existingGroupId = effectiveEditingGroup?.id ?? null;
+    const saved = await saveGroup.run({
+      name,
+      display_name: blankToNull(form.display_name),
+      vlan_id: blankToNull(form.vlan_id),
+      ip_range: blankToNull(form.ip_range),
+      gateway: blankToNull(form.gateway),
+      dns_servers: blankToNull(form.dns_servers),
+      description: blankToNull(form.description),
+    }, existingGroupId);
+    if (saved === null) return;
+    await groupsQuery.reload();
+    await onGraphChange();
+    setShowForm(false);
+    setEditingId(null);
   }
 
   async function deleteGroup(groupId: number, groupName: string) {
     if (!canWrite) return;
-    if (!window.confirm(`Delete group "${groupName}"? Assigned devices will be unlinked from this group.`)) return;
-    setBusy(true);
-    setError(null);
-    try {
-      await api.deleteTopologyGroup(accessToken, groupId);
-      setGroups((current) => current.filter((g) => g.id !== groupId));
-      await onGraphChange();
-      if (editingId === groupId) setShowForm(false);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to delete group');
-    } finally {
-      setBusy(false);
-    }
+    const confirmed = await confirmAction({
+      title: "Delete group",
+      message: `Delete group "${groupName}"?`,
+      detail: "Assigned devices will be unlinked from this group. The devices themselves are kept.",
+      confirmLabel: "Delete group",
+    });
+    if (!confirmed) return;
+    const deleted = await removeGroup.run(groupId);
+    if (deleted === null) return;
+    groupsQuery.setData((current) => (current ?? []).filter((g) => g.id !== groupId));
+    await onGraphChange();
+    if (editingId === groupId) setShowForm(false);
   }
 
   const vlanSortCols: { key: string; label: string; sortable?: boolean }[] = [
@@ -236,7 +226,7 @@ export function VlanWorkspace({
       <label className="ipam-form-label vlan-form-grid__full">Description
         <input className="ipam-form-input" value={form.description} onChange={(event) => setForm((c) => ({ ...c, description: event.target.value }))} />
       </label>
-      {error && <p className="form-error vlan-form-grid__full">{error}</p>}
+      {(formError ?? saveGroup.error) && <p className="form-error vlan-form-grid__full">{formError ?? saveGroup.error}</p>}
     </div>
   );
 
@@ -272,7 +262,10 @@ export function VlanWorkspace({
               <button type="button" className="nm-btn nm-btn--primary" disabled={busy} onClick={() => openCreateForm()}>+ New group</button>
             )}
           </div>
-          {filteredSortedRows.length === 0 ? (
+          {groupsQuery.error && <div className="error-banner">{groupsQuery.error}</div>}
+          {groupsQuery.isLoading ? (
+            <TableSkeleton rows={7} columns={5} />
+          ) : filteredSortedRows.length === 0 ? (
             <p className="inventory-empty">
               {vlanSearch ? 'No groups match your search.' : 'No groups found. Add devices to the topology or create a group manually.'}
             </p>
@@ -285,6 +278,7 @@ export function VlanWorkspace({
                       key={key}
                       type="button"
                       className={`inventory-sort-btn${vlanSortKey === key ? ' active' : ''}`}
+                      aria-sort={vlanAriaSort(key)}
                       onClick={() => toggleVlanSort(key)}
                     >
                       {label}

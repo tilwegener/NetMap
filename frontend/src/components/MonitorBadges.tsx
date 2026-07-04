@@ -36,7 +36,7 @@ export function AnomalyBadge({ level, score }: { level: string; score: number | 
   );
 }
 
-export function RttSparkline({ data }: { data: MonitorHistoryPoint[] }) {
+function RttSparklineImpl({ data }: { data: MonitorHistoryPoint[] }) {
   const valid = data.filter((d) => d.rtt_ms !== null);
   if (valid.length < 2) {
     return <p className="dash-empty" style={{ margin: "12px 0 0" }}>Not enough data yet.</p>;
@@ -82,7 +82,7 @@ export function RttSparkline({ data }: { data: MonitorHistoryPoint[] }) {
   );
 }
 
-export function MiniRttSparkline({ data }: { data: (number | null)[] }) {
+function MiniRttSparklineImpl({ data }: { data: (number | null)[] }) {
   const valid = data.filter((v): v is number => v !== null);
   if (valid.length < 2) return null;
   const min = Math.min(...valid);
@@ -122,3 +122,6 @@ export function MonStat({
     </div>
   );
 }
+
+export const RttSparkline = React.memo(RttSparklineImpl);
+export const MiniRttSparkline = React.memo(MiniRttSparklineImpl);

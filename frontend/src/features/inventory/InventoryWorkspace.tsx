@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useContext } from "react";
 import { ObservationsAlert } from "../../components/ObservationsAlert";
+import { useConfirm } from "../../components/ConfirmDialog";
 import { Search, Star, ChevronUp, ChevronDown } from "lucide-react";
 import { IconServer, IconWifi, IconWifiOff, IconTopologyRing } from "@tabler/icons-react";
 import {
@@ -54,6 +55,7 @@ export function InventoryWorkspace({
   openObservationCount?: number;
 }) {
   type InventoryStatusFilter = "all" | "online" | "offline" | "warning" | "unknown" | "disabled" | "paused";
+  const confirmAction = useConfirm();
   const [selectedDeviceId, setSelectedDeviceId] = useState<number | null>(graph.devices[0]?.id ?? null);
   const [selectedDeviceIds, setSelectedDeviceIds] = useState<Set<number>>(new Set());
   const [selectedGroupFilter, setSelectedGroupFilter] = useState('all');
@@ -314,7 +316,15 @@ export function InventoryWorkspace({
     if (!canWrite || selectedDeviceIds.size === 0) {
       return;
     }
-    if (!window.confirm(`Delete ${selectedDeviceIds.size} selected devices?`)) {
+    const count = selectedDeviceIds.size;
+    const confirmed = await confirmAction({
+      title: `Delete ${count} device${count === 1 ? "" : "s"}`,
+      message: `This permanently deletes ${count} selected device${count === 1 ? "" : "s"} and their relationships.`,
+      detail: "Monitoring history and topology links for these devices are removed.",
+      confirmLabel: count === 1 ? "Delete device" : `Delete ${count} devices`,
+      typeToConfirm: count >= 5 ? "delete" : undefined,
+    });
+    if (!confirmed) {
       return;
     }
     setBusy(true);

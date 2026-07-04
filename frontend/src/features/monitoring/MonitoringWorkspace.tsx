@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback, useContext, type FormEvent } from "react";
+import { useSortableData } from "../../hooks/useSortableData";
 import { Search, Star, ChevronUp, ChevronDown, Activity, X } from "lucide-react";
 import { IconServer, IconWifi, IconWifiOff, IconAlertCircle, IconPlugConnected } from "@tabler/icons-react";
 import {
@@ -149,8 +150,7 @@ export function MonitoringWorkspace({
   const [pauseBusyId, setPauseBusyId] = useState<number | null>(null);
   const [searchQ, setSearchQ] = useState("");
   const [refreshing, setRefreshing] = useState(false);
-  const [sortKey, setSortKey] = useState<"status" | "name" | "uptime24" | "uptime7" | "rtt" | "checked">("name");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const { sortKey, sortDir, toggleSort } = useSortableData<"status" | "name" | "uptime24" | "uptime7" | "rtt" | "checked">("name");
   const [deviceAlertEvents, setDeviceAlertEvents] = useState<AlertEvent[]>([]);
   const [allAlertRules, setAllAlertRules] = useState<AlertRule[]>([]);
   const [analysis, setAnalysis] = useState<DeviceAnalysis | null>(null);
@@ -393,10 +393,6 @@ export function MonitoringWorkspace({
     return filtered;
   }, [devices, searchQ, filterGroup, filterSite, filterStatus, filterVlan, favouriteFilter, favouriteIds, sortKey, sortDir]);
 
-  function toggleSort(key: typeof sortKey) {
-    if (sortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    else { setSortKey(key); setSortDir("asc"); }
-  }
 
   const offlineDevices = useMemo(() => devices.filter((d) => d.status === "offline"), [devices]);
 

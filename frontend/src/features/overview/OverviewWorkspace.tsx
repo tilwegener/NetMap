@@ -30,6 +30,7 @@ import { HeartbeatBar, HeartbeatTimeline } from "../../components/HeartbeatBar";
 import { DeviceForm } from "../devices/DeviceForm";
 import { DiscoveryModal } from "../topology/DiscoveryModal";
 import { computeIncidents } from "../../utils/monitoring";
+import { useApiQuery, useApiMutation } from "../../hooks/useApiQuery";
 
 export function OverviewWorkspace({
   accessToken,
@@ -58,18 +59,43 @@ export function OverviewWorkspace({
   summary: DashboardSummary | null;
   user: User;
 }) {
-  const [monFleet, setMonFleet] = useState<FleetSummary | null>(null);
-  const [monDevices, setMonDevices] = useState<DeviceMonitorSummary[]>([]);
-  const [monLoading, setMonLoading] = useState(true);
+  const monQuery = useApiQuery(
+    accessToken
+      ? async () => {
+          const [fleet, devices] = await Promise.all([
+            api.getMonitoringSummary(accessToken),
+            api.listMonitoringDevices(accessToken),
+          ]);
+          return { fleet, devices };
+        }
+      : null,
+    [accessToken],
+  );
+  const monFleet = monQuery.data?.fleet ?? null;
+  const monDevices = useMemo(() => monQuery.data?.devices ?? [], [monQuery.data]);
+  const monLoading = monQuery.isLoading;
+
+  const formOptionsQuery = useApiQuery(
+    accessToken && canWrite
+      ? async () => {
+          const [groups, sites, snmpProfiles] = await Promise.all([
+            api.topologyGroups(accessToken),
+            api.sites(accessToken),
+            api.listSnmpProfiles(accessToken),
+          ]);
+          return { groups, sites, snmpProfiles };
+        }
+      : null,
+    [accessToken, canWrite],
+  );
+  const groups = formOptionsQuery.data?.groups ?? [];
+  const sites = formOptionsQuery.data?.sites ?? [];
+  const snmpProfiles = formOptionsQuery.data?.snmpProfiles ?? [];
+
   const [alertDismissed, setAlertDismissed] = useState(false);
   const [favouriteSearch, setFavouriteSearch] = useState("");
   const [showDeviceForm, setShowDeviceForm] = useState(false);
   const [showScanModal, setShowScanModal] = useState(false);
-  const [groups, setGroups] = useState<TopologyGroup[]>([]);
-  const [sites, setSites] = useState<Site[]>([]);
-  const [snmpProfiles, setSnmpProfiles] = useState<SnmpProfile[]>([]);
-  const [busy, setBusy] = useState(false);
-  const [actionError, setActionError] = useState<string | null>(null);
   const [selectedFavouriteId, setSelectedFavouriteId] = useState<number | null>(null);
   const [favouriteHistory, setFavouriteHistory] = useState<MonitorHistoryPoint[]>([]);
   const [favouriteHistoryHours, setFavouriteHistoryHours] = useState(24);
@@ -77,44 +103,19 @@ export function OverviewWorkspace({
   const [favouriteAnalysis, setFavouriteAnalysis] = useState<DeviceAnalysis | null>(null);
   const [favouriteAlertEvents, setFavouriteAlertEvents] = useState<AlertEvent[]>([]);
 
-  useEffect(() => {
-    if (!accessToken) return;
-    setMonLoading(true);
-    void Promise.all([
-      api.getMonitoringSummary(accessToken),
-      api.listMonitoringDevices(accessToken),
-    ]).then(([f, d]) => { setMonFleet(f); setMonDevices(d); }).catch(() => {}).finally(() => setMonLoading(false));
-  }, [accessToken]);
-
-  useEffect(() => {
-    if (!accessToken || !canWrite) return;
-    let cancelled = false;
-    void Promise.all([
-      api.topologyGroups(accessToken),
-      api.sites(accessToken),
-      api.listSnmpProfiles(accessToken),
-    ]).then(([groupRows, siteRows, profileRows]) => {
-      if (cancelled) return;
-      setGroups(groupRows);
-      setSites(siteRows);
-      setSnmpProfiles(profileRows);
-    }).catch(() => {});
-    return () => { cancelled = true; };
-  }, [accessToken, canWrite]);
+  const createDevice = useApiMutation(
+    (payload: DevicePayload) => api.createDevice(accessToken!, payload),
+    { successMessage: "Device created", errorToast: false },
+  );
+  const busy = createDevice.isBusy;
+  const actionError = createDevice.error;
 
   async function submitNewDevice(payload: DevicePayload) {
     if (!accessToken) return;
-    setBusy(true);
-    setActionError(null);
-    try {
-      const created = await api.createDevice(accessToken, payload);
-      onDeviceChange(created);
-      setShowDeviceForm(false);
-    } catch (err) {
-      setActionError(err instanceof Error ? err.message : "Unable to create device");
-    } finally {
-      setBusy(false);
-    }
+    const created = await createDevice.run(payload);
+    if (created === null) return;
+    onDeviceChange(created);
+    setShowDeviceForm(false);
   }
 
   const statusCounts = useMemo(() => {

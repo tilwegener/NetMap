@@ -6,6 +6,7 @@ import { type SecurityFilters, emptySecurityFilters } from "../../types";
 import { buildFirewallEventsWsUrl, buildSearchParams, eventMatchesFilters, relatedDevicesForEvent } from "../../utils/security";
 import { deviceLabel, formatEventTime, toDateTimeLocal } from "../../utils/format";
 import { SecurityFilterInput } from "../../components/SecurityFilterInput";
+import { useConfirm } from "../../components/ConfirmDialog";
 import { ClickableCell } from "../../components/ClickableCell";
 
 export function SecurityWorkspace({
@@ -17,6 +18,7 @@ export function SecurityWorkspace({
   graph: TopologyGraph;
   onJumpToTopologyDevice: (deviceId: number) => void;
 }) {
+  const confirmAction = useConfirm();
   const [filters, setFilters] = useState<SecurityFilters>(emptySecurityFilters);
   const [draftFilters, setDraftFilters] = useState<SecurityFilters>(emptySecurityFilters);
   const [events, setEvents] = useState<FirewallEvent[]>([]);
@@ -65,7 +67,12 @@ export function SecurityWorkspace({
 
   async function deleteSelectedSearch() {
     if (!accessToken || selectedSearchId === "") return;
-    if (!confirm("Delete this saved search?")) return;
+    const confirmed = await confirmAction({
+      title: "Delete saved search",
+      message: "Delete this saved search?",
+      confirmLabel: "Delete search",
+    });
+    if (!confirmed) return;
     await api.deleteSavedSecuritySearch(accessToken, selectedSearchId);
     setSelectedSearchId("");
     setSavedSearches(await api.listSavedSecuritySearches(accessToken));

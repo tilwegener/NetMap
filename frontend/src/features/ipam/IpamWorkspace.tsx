@@ -17,6 +17,11 @@ import { IpGrid } from "../../components/IpGrid";
 import { Modal } from "../../components/Modal";
 import { MonStatusDot } from "../../components/MonitorBadges";
 import { SubnetForm } from "../ipam/SubnetForm";
+import { useApiQuery } from "../../hooks/useApiQuery";
+import { useSortableData } from "../../hooks/useSortableData";
+import { useConfirm } from "../../components/ConfirmDialog";
+import { useToast } from "../../components/Toast";
+import { WorkspaceSkeleton } from "../../components/Skeleton";
 
 function ipamAddressLabel(entry: IpAddressEntry): string | null {
   const name = entry.display_name?.trim();
@@ -28,17 +33,27 @@ function ipamAddressLabel(entry: IpAddressEntry): string | null {
 }
 
 export function IpamWorkspace({ accessToken, canWrite }: { accessToken: string; canWrite: boolean }) {
-  const [summary, setSummary] = useState<IpamSummary | null>(null);
-  const [subnets, setSubnets] = useState<IpamSubnet[]>([]);
-  const [conflicts, setConflicts] = useState<IpamConflict[]>([]);
-  const [dhcpLeases, setDhcpLeases] = useState<DhcpLease[]>([]);
-  const [reservations, setReservations] = useState<IpReservation[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const confirmAction = useConfirm();
+  const toast = useToast();
+  const ipamQuery = useApiQuery(async () => {
+    const [summary, subnets, conflicts, dhcpLeases, reservations] = await Promise.all([
+      api.getIpamSummary(accessToken),
+      api.listSubnets(accessToken),
+      api.getIpamConflicts(accessToken),
+      api.listDhcpLeases(accessToken),
+      api.listReservations(accessToken),
+    ]);
+    return { summary, subnets, conflicts, dhcpLeases, reservations };
+  }, [accessToken]);
+  const summary = ipamQuery.data?.summary ?? null;
+  const subnets = useMemo(() => ipamQuery.data?.subnets ?? [], [ipamQuery.data]);
+  const conflicts = ipamQuery.data?.conflicts ?? [];
+  const dhcpLeases = ipamQuery.data?.dhcpLeases ?? [];
+  const reservations = ipamQuery.data?.reservations ?? [];
+  const loading = ipamQuery.isLoading;
+  const error = ipamQuery.error;
 
   const [selectedSubnet, setSelectedSubnet] = useState<IpamSubnet | null>(null);
-  const [addresses, setAddresses] = useState<IpAddressEntry[]>([]);
-  const [addressesLoading, setAddressesLoading] = useState(false);
 
   const [showSubnetForm, setShowSubnetForm] = useState(false);
   const [editingSubnet, setEditingSubnet] = useState<IpamSubnet | null>(null);
@@ -72,17 +87,7 @@ export function IpamWorkspace({ accessToken, canWrite }: { accessToken: string; 
   const [vlanSelected, setVlanSelected] = useState<Set<number>>(new Set());
   const [vlanBusy, setVlanBusy] = useState(false);
   const [vlanMsg, setVlanMsg] = useState<string | null>(null);
-  const [ipamSortKey, setIpamSortKey] = useState<"name" | "cidr" | "util" | "devices" | "dhcp" | "free" | "gateway">("name");
-  const [ipamSortDir, setIpamSortDir] = useState<"asc" | "desc">("asc");
-
-  function toggleIpamSort(key: typeof ipamSortKey) {
-    if (ipamSortKey === key) {
-      setIpamSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    } else {
-      setIpamSortKey(key);
-      setIpamSortDir("asc");
-    }
-  }
+  const { sortKey: ipamSortKey, sortDir: ipamSortDir, toggleSort: toggleIpamSort } = useSortableData<"name" | "cidr" | "util" | "devices" | "dhcp" | "free" | "gateway">("name");
 
   const sortedSubnets = useMemo(() => {
     const dir = ipamSortDir === "asc" ? 1 : -1;
@@ -100,23 +105,7 @@ export function IpamWorkspace({ accessToken, canWrite }: { accessToken: string; 
     });
   }, [subnets, ipamSortKey, ipamSortDir]);
 
-  const load = useCallback(async () => {
-    try {
-      const [s, sn, c, dl, res] = await Promise.all([
-        api.getIpamSummary(accessToken),
-        api.listSubnets(accessToken),
-        api.getIpamConflicts(accessToken),
-        api.listDhcpLeases(accessToken),
-        api.listReservations(accessToken),
-      ]);
-      setSummary(s); setSubnets(sn); setConflicts(c); setDhcpLeases(dl); setReservations(res);
-      setError(null);
-    } catch {
-      setError("Failed to load IPAM data");
-    } finally {
-      setLoading(false);
-    }
-  }, [accessToken]);
+  const load = ipamQuery.reload;
 
   const setTopbarNote = useContext(TopbarNoteCtx);
   useEffect(() => {
@@ -124,20 +113,16 @@ export function IpamWorkspace({ accessToken, canWrite }: { accessToken: string; 
     return () => setTopbarNote("");
   }, [setTopbarNote]);
 
-  useEffect(() => { void load(); }, [load]);
-
-  const loadAddresses = useCallback(async (subnet: IpamSubnet) => {
-    setAddressesLoading(true);
-    try {
-      setAddresses(await api.getSubnetAddresses(accessToken, subnet.id));
-    } catch { setAddresses([]); }
-    finally { setAddressesLoading(false); }
-  }, [accessToken]);
-
-  useEffect(() => {
-    if (selectedSubnet) void loadAddresses(selectedSubnet);
-    else setAddresses([]);
-  }, [selectedSubnet, loadAddresses]);
+  const addressesQuery = useApiQuery(
+    selectedSubnet ? () => api.getSubnetAddresses(accessToken, selectedSubnet.id) : null,
+    [accessToken, selectedSubnet?.id],
+  );
+  const addresses = selectedSubnet ? (addressesQuery.data ?? []) : [];
+  const addressesLoading = Boolean(selectedSubnet) && (addressesQuery.isLoading || addressesQuery.isRefreshing);
+  const loadAddresses = useCallback(
+    (_subnet: IpamSubnet) => addressesQuery.reload({ silent: false }),
+    [addressesQuery.reload],
+  );
 
   async function saveSubnet(payload: SubnetPayload, createVlanGroup = false) {
     setFormBusy(true); setFormError(null);
@@ -167,12 +152,21 @@ export function IpamWorkspace({ accessToken, canWrite }: { accessToken: string; 
   }
 
   async function deleteSubnet(subnet: IpamSubnet) {
-    if (!confirm(`Delete subnet "${subnet.name}" (${subnet.cidr})?`)) return;
+    const confirmed = await confirmAction({
+      title: "Delete subnet",
+      message: `Delete subnet "${subnet.name}" (${subnet.cidr})?`,
+      detail: "Devices and leases in this range are kept; only the subnet definition is removed.",
+      confirmLabel: "Delete subnet",
+    });
+    if (!confirmed) return;
     try {
       await api.deleteSubnet(accessToken, subnet.id);
       if (selectedSubnet?.id === subnet.id) setSelectedSubnet(null);
       await load();
-    } catch { /* ignore */ }
+      toast.success("Subnet deleted");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to delete subnet");
+    }
   }
 
   function parseReserveIpInput(value: string): string[] | string {
@@ -308,12 +302,20 @@ export function IpamWorkspace({ accessToken, canWrite }: { accessToken: string; 
   }
 
   async function deleteReservation(r: IpReservation) {
-    if (!confirm(`Remove reservation for ${r.ip_address}?`)) return;
+    const confirmed = await confirmAction({
+      title: "Remove reservation",
+      message: `Remove the reservation for ${r.ip_address}?`,
+      confirmLabel: "Remove reservation",
+    });
+    if (!confirmed) return;
     try {
       await api.deleteReservation(accessToken, r.id);
       await load();
       if (selectedSubnet) void loadAddresses(selectedSubnet);
-    } catch { /* ignore */ }
+      toast.success("Reservation removed");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to remove reservation");
+    }
   }
 
   async function importDhcp(e: FormEvent) {
@@ -329,9 +331,20 @@ export function IpamWorkspace({ accessToken, canWrite }: { accessToken: string; 
   }
 
   async function clearDhcp() {
-    if (!confirm("Clear all DHCP leases?")) return;
-    await api.clearDhcpLeases(accessToken);
-    await load();
+    const confirmed = await confirmAction({
+      title: "Clear DHCP leases",
+      message: `Clear all ${dhcpLeases.length} imported DHCP leases?`,
+      detail: "Lease data can be re-imported from your DHCP server at any time.",
+      confirmLabel: "Clear leases",
+    });
+    if (!confirmed) return;
+    try {
+      await api.clearDhcpLeases(accessToken);
+      await load();
+      toast.success("DHCP leases cleared");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to clear DHCP leases");
+    }
   }
 
   async function openVlanImport() {
@@ -381,7 +394,7 @@ export function IpamWorkspace({ accessToken, canWrite }: { accessToken: string; 
     return d.toLocaleDateString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
   }
 
-  if (loading) return <div className="dash-layout"><p className="dash-empty">Loading IPAM data…</p></div>;
+  if (loading) return <div className="dash-layout"><WorkspaceSkeleton /></div>;
   if (error) return <div className="dash-layout"><p className="dash-empty" style={{ color: "var(--dash-red)" }}>{error}</p></div>;
 
   const errorConflicts = conflicts.filter((c) => c.severity === "error");
@@ -557,9 +570,19 @@ export function IpamWorkspace({ accessToken, canWrite }: { accessToken: string; 
                 type="button"
                 className="nm-btn"
                 onClick={async () => {
-                  if (!confirm("Delete all expired reservations?")) return;
-                  const { deleted } = await api.deleteExpiredReservations(accessToken);
-                  if (deleted > 0) { await load(); if (selectedSubnet) void loadAddresses(selectedSubnet); }
+                  const confirmed = await confirmAction({
+                    title: "Delete expired reservations",
+                    message: "Delete all expired IP reservations?",
+                    confirmLabel: "Delete expired",
+                  });
+                  if (!confirmed) return;
+                  try {
+                    const { deleted } = await api.deleteExpiredReservations(accessToken);
+                    if (deleted > 0) { await load(); if (selectedSubnet) void loadAddresses(selectedSubnet); }
+                    toast.success(deleted > 0 ? `Deleted ${deleted} expired reservation${deleted === 1 ? "" : "s"}` : "No expired reservations to delete");
+                  } catch (err) {
+                    toast.error(err instanceof Error ? err.message : "Failed to delete expired reservations");
+                  }
                 }}
               >
                 Clear expired
