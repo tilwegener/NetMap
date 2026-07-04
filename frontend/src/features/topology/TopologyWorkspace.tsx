@@ -1,14 +1,11 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import cytoscape, { type Core } from "cytoscape";
-import { Search, Network, EyeOff, Eye, ChevronDown, ChevronUp } from "lucide-react";
-import { IconServer, IconWifi, IconWifiOff, IconTopologyRing } from "@tabler/icons-react";
 import {
   api,
   type Device, type Relationship, type RelationshipPayload, type DevicePayload,
   type DeviceLiveStatus, type TopologyGraph, type TopologyGroup, type Site,
   type DeviceSecurityEventSummary, type TopologyLayout, type DeviceIcon, type SnmpProfile,
 } from "../../api/client";
-import { type DiagramLayout, type DiagramLayoutOptions } from "../../types";
 import { useConfirm } from "../../components/ConfirmDialog";
 import { useIconPacks } from "../../providers/IconPackProvider";
 import {
@@ -16,29 +13,24 @@ import {
   savedTopologyLayoutKey, readTopologyDisplayPrefs, writeTopologyDisplayPrefs,
   readSavedTopologyLayout, clearSavedTopologyLayout,
   writeSavedTopologyLayoutMeta,
-  persistCurrentTopologyLayout, collectCurrentTopologyLayoutPositions, sanitizeTopologyLayoutPositions,
-  type GroupLayoutShape,
+  persistCurrentTopologyLayout, sanitizeTopologyLayoutPositions,
 } from "../../utils/topology";
 import { compareGroupLabels } from "../../utils/sort";
 import { deviceLabel, statusColor } from "../../utils/format";
 import { isDeviceMonitoringPaused } from "../../utils/device";
 import { deviceIconUrl, deviceIconPath, resolveDeviceIcon } from "../../icons";
-import { downloadDataUrl, downloadTextFile, buildTopologySvg, topologySvgDimensions, edgeClippedEndpoints } from "../../utils/download";
 import { relationshipVisualSourceNodeId, relationshipVisualTargetNodeId } from "../../utils/relationship";
-import { DeviceDetails } from "../devices/DeviceDetails";
 import { DeviceForm } from "../devices/DeviceForm";
-import { RelationshipDetails } from "./RelationshipDetails";
 import { RelationshipEditForm, RelationshipForm } from "./RelationshipForm";
 import { DiscoveryModal } from "./DiscoveryModal";
+import { buildCytoscapeStylesheet } from "./cytoscapeStyles";
+import { exportTopologyPng, exportTopologySvg } from "./topologyExport";
+import { EntityList } from "./EntityList";
+import { TopologyToolbar, type GroupDisplayPref } from "./TopologyToolbar";
+import { DetailsPanel } from "./DetailsPanel";
 
 const DEFAULT_EDGE_LABEL_FONT_SIZE = 15;
 const DEFAULT_NODE_LABEL_FONT_SIZE = 11;
-
-// Cytoscape's Css typings do not include the non-standard shadow-* extension
-// properties; funnel them through one typed boundary instead of scattered casts.
-function cyExtendedStyle(style: Record<string, string | number>): cytoscape.Css.Node {
-  return style as unknown as cytoscape.Css.Node;
-}
 
 export function TopologyWorkspace({
   accessToken,
@@ -73,8 +65,6 @@ export function TopologyWorkspace({
   const { activeIconPackId } = useIconPacks();
   const [selectedDeviceId, setSelectedDeviceId] = useState<number | null>(null);
   const [selectedRelationshipId, setSelectedRelationshipId] = useState<number | null>(null);
-  const [expandedEntitySection, setExpandedEntitySection] = useState<"devices" | "relationships" | "groups" | null>(null);
-  const [entitySearch, setEntitySearch] = useState("");
   const [panelHoveredDeviceId, setPanelHoveredDeviceId] = useState<number | null>(null);
   const [cloningDevice, setCloningDevice] = useState<Device | null>(null);
   const [showDeviceForm, setShowDeviceForm] = useState(false);
@@ -91,11 +81,8 @@ export function TopologyWorkspace({
   const [sites, setSites] = useState<Site[]>([]);
   const [snmpProfiles, setSnmpProfiles] = useState<SnmpProfile[]>([]);
   const [selectedSiteId, setSelectedSiteId] = useState<number | null>(null);
-  const [layoutBusy, setLayoutBusy] = useState(false);
   const [activeSavedLayoutId, setActiveSavedLayoutId] = useState<number | null>(null);
   const [liveStatuses, setLiveStatuses] = useState<DeviceLiveStatus[]>([]);
-  const [showDisplaySettings, setShowDisplaySettings] = useState(false);
-  const [showGroupsPanel, setShowGroupsPanel] = useState(false);
   const [hiddenGroupNames, setHiddenGroupNames] = useState<Set<string>>(() => {
     try {
       const raw = localStorage.getItem(`netmap.topology-hidden-groups.${userId}`);
@@ -124,7 +111,7 @@ export function TopologyWorkspace({
     try { return readTopologyDisplayPrefs(userId).showNodeLabels ?? true; } catch { return true; }
   });
   const [selectedGroupForDisplay, setSelectedGroupForDisplay] = useState("Ungrouped");
-  const [groupDisplayPrefs, setGroupDisplayPrefs] = useState<Record<string, { nodeScalePercent: number; spacingScalePercent: number; maxDevicesPerRow: number; layoutShape?: GroupLayoutShape; maxRings?: number }>>({});
+  const [groupDisplayPrefs, setGroupDisplayPrefs] = useState<Record<string, GroupDisplayPref>>({});
   const [overlayNodes, setOverlayNodes] = useState<
     Array<{ id: number; x: number; y: number; lines: string[]; color: string; icon: DeviceIcon; size: number }>
   >([]);
@@ -402,35 +389,17 @@ export function TopologyWorkspace({
     return [...names].sort(compareGroupLabels);
   }, [liveGraph.devices]);
 
-  useEffect(() => { setEntitySearch(""); }, [expandedEntitySection]);
-
-  const filteredEntityDevices = useMemo(() => {
-    const q = entitySearch.toLowerCase();
-    if (!q) return filteredGraph.devices;
-    return filteredGraph.devices.filter((d) =>
-      deviceLabel(d).toLowerCase().includes(q) || d.ip_address.toLowerCase().includes(q),
-    );
-  }, [entitySearch, filteredGraph.devices]);
-
-  const filteredEntityRelationships = useMemo(() => {
-    const q = entitySearch.toLowerCase();
-    if (!q) return filteredGraph.relationships;
-    return filteredGraph.relationships.filter((rel) => {
-      const src = liveGraph.devices.find((d) => d.id === rel.source_device_id);
-      const tgt = liveGraph.devices.find((d) => d.id === rel.target_device_id);
-      return (
-        (src && deviceLabel(src).toLowerCase().includes(q)) ||
-        (tgt && deviceLabel(tgt).toLowerCase().includes(q)) ||
-        (rel.relationship_type ?? "").toLowerCase().includes(q)
-      );
-    });
-  }, [entitySearch, filteredGraph.relationships, liveGraph.devices]);
-
-  const filteredEntityGroups = useMemo(() => {
-    const q = entitySearch.toLowerCase();
-    if (!q) return allGroupNames;
-    return allGroupNames.filter((g) => g.toLowerCase().includes(q));
-  }, [entitySearch, allGroupNames]);
+  // Device count per group (non-disabled), shared by the entity list and the
+  // toolbar's group-visibility dropdown.
+  const groupDeviceCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const d of liveGraph.devices) {
+      if (d.status === "disabled") continue;
+      const name = d.topology_group ?? "Ungrouped";
+      counts.set(name, (counts.get(name) ?? 0) + 1);
+    }
+    return counts;
+  }, [liveGraph.devices]);
 
   useEffect(() => {
     localStorage.setItem(`netmap.topology-hidden-groups.${userId}`, JSON.stringify([...hiddenGroupNames]));
@@ -606,182 +575,7 @@ export function TopologyWorkspace({
         boxSelectionEnabled: false,
         zoomingEnabled: true,
         userZoomingEnabled: true,
-        style: [
-          {
-            selector: "node.device",
-            style: {
-              "background-color": "transparent",
-              "background-opacity": 0,
-              "border-color": "transparent",
-              "border-width": 0,
-              "bounds-expansion": 12,
-              "font-size": 1,
-              height: "data(hitSize)",
-              label: "",
-              "overlay-opacity": 0,
-              shape: "rectangle",
-              width: "data(hitSize)",
-              "z-index": 10,
-            },
-          },
-          {
-            selector: "node.device.hovered",
-            style: {
-              height: 56,
-              opacity: 0.92,
-              width: 56,
-              "z-index": 65,
-            },
-          },
-          {
-            selector: "node.device.security-alert",
-            style: {
-              opacity: 0.88,
-              "text-border-color": "#f0b9b9",
-              "text-border-width": 2,
-              "z-index": 55,
-            },
-          },
-          {
-            selector: "node.device.status-online",
-            style: {
-              "text-background-color": "#effaf5",
-            },
-          },
-          {
-            selector: "node.device.status-offline",
-            style: {
-              "text-background-color": "#f7f7f9",
-            },
-          },
-          {
-            selector: "node.device.status-paused",
-            style: {
-              "text-background-color": "#eef4f8",
-            },
-          },
-          {
-            selector: "node.device.status-warning",
-            style: {
-              "text-background-color": "#fff8ea",
-            },
-          },
-          {
-            selector: "node.device.status-unknown",
-            style: {
-              "text-background-color": "#f4f8fa",
-            },
-          },
-          {
-            selector: "node.device.focus-pulse",
-            style: {
-              opacity: 0.75,
-              "z-index": 70,
-            },
-          },
-          {
-            selector: "node.zone",
-            style: {
-              "background-color": "data(zoneBgColor)",
-              "background-opacity": 0.1,
-              "border-color": "data(zoneBorderColor)",
-              "border-opacity": 0.1,
-              "border-style": "dashed",
-              "border-width": 2,
-              color: "data(zoneLabelColor)",
-              "font-size": 24,
-              "font-weight": 700,
-              label: "data(label)",
-              padding: "34px",
-              shape: "round-rectangle",
-              "text-halign": "center",
-              "text-margin-y": -26,
-              "text-valign": "top",
-            },
-          },
-          {
-            selector: "edge",
-            style: {
-              "curve-style": "bezier",
-              label: "data(label)",
-              "line-color": "#6f8798",
-              "line-style": "solid",
-              "target-arrow-color": "#6f8798",
-              "target-arrow-shape": "triangle",
-              color: "data(edgeLabelColor)",
-              "font-size": edgeLabelFontSize,
-              "font-weight": 600,
-              "overlay-opacity": 0,
-              "overlay-padding": "12px",
-              "text-background-color": "data(edgeLabelBg)",
-              "text-background-opacity": 1,
-              "text-background-padding": "5px",
-              "text-background-shape": "roundrectangle",
-              "text-border-opacity": 1,
-              "text-border-width": 1,
-              "text-border-color": "data(edgeBorderColor)",
-              width: 2,
-            },
-          },
-          {
-            selector: "edge.hovered",
-            style: {
-              "line-color": "#1d6472",
-              "target-arrow-color": "#1d6472",
-              width: 4,
-              "z-index": 40,
-            },
-          },
-          {
-            selector: "edge:selected",
-            style: {
-              "line-color": "#1d6472",
-              "target-arrow-color": "#1d6472",
-              width: 5,
-              "z-index": 60,
-            },
-          },
-          {
-            selector: "node.device:selected",
-            style: {
-              height: 58,
-              opacity: 0.9,
-              width: 58,
-            },
-          },
-          {
-            selector: "node.device.panel-hover",
-            style: cyExtendedStyle({
-              "shadow-blur": 22,
-              "shadow-color": "#1d9ab0",
-              "shadow-opacity": 0.55,
-              "shadow-offset-x": 0,
-              "shadow-offset-y": 0,
-              opacity: 1,
-              "z-index": 80,
-            }),
-          },
-          {
-            selector: "node.zone.panel-hover",
-            style: cyExtendedStyle({
-              "shadow-blur": 18,
-              "shadow-color": "#8040c0",
-              "shadow-opacity": 0.4,
-              "shadow-offset-x": 0,
-              "shadow-offset-y": 0,
-            }),
-          },
-          {
-            selector: "edge.panel-hover",
-            style: {
-              "line-color": "#1d9ab0",
-              "target-arrow-color": "#1d9ab0",
-              width: 4,
-              opacity: 1,
-              "z-index": 50,
-            },
-          },
-        ],
+        style: buildCytoscapeStylesheet(edgeLabelFontSize),
       });
       cyRef.current.on("tap", "node.device", (event) => {
         setSelectedDeviceId(Number(event.target.id().replace("device-", "")));
@@ -1286,85 +1080,6 @@ export function TopologyWorkspace({
   }
 
 
-  async function refreshSavedLayouts() {
-    if (!accessToken) {
-      return;
-    }
-    const layouts = await api.topologyLayouts(accessToken);
-    setSavedLayouts(layouts);
-  }
-
-  async function saveNamedLayout(name: string) {
-    if (!accessToken) {
-      return;
-    }
-    const normalizedName = name.trim();
-    if (!normalizedName) {
-      setTopologyError("Layout name is required");
-      return;
-    }
-    const positions = sanitizeTopologyLayoutPositions({
-      ...layoutPositionsRef.current,
-      ...collectCurrentTopologyLayoutPositions(cyRef.current),
-    });
-    if (Object.keys(positions).length === 0) {
-      setTopologyError("No topology nodes are available to save");
-      return;
-    }
-    setLayoutBusy(true);
-    setTopologyError(null);
-    try {
-      const saved = await api.saveTopologyLayout(accessToken, { name: normalizedName, positions });
-      setActiveSavedLayoutId(saved.id);
-      await refreshSavedLayouts();
-    } catch (err) {
-      setTopologyError(err instanceof Error ? err.message : "Unable to save layout");
-    } finally {
-      setLayoutBusy(false);
-    }
-  }
-
-  function loadSavedLayout(layout: TopologyLayout) {
-    const positions = sanitizeTopologyLayoutPositions(layout.positions);
-    layoutPositionsRef.current = positions;
-    const now = Date.now();
-    window.localStorage.setItem(savedTopologyLayoutKey(userId), JSON.stringify(positions));
-    writeSavedTopologyLayoutMeta(userId, { savedAt: now });
-    serverSaveLayoutRef.current(positions, true);
-    fitOnNextRenderRef.current = true;
-    setActiveSavedLayoutId(layout.id);
-    setLayoutRevision((current) => current + 1);
-  }
-
-  async function deleteSavedLayout(layout: TopologyLayout) {
-    if (!accessToken) {
-      return;
-    }
-    setLayoutBusy(true);
-    setTopologyError(null);
-    try {
-      await api.deleteTopologyLayout(accessToken, layout.id);
-      if (activeSavedLayoutId === layout.id) {
-        setActiveSavedLayoutId(null);
-      }
-      await refreshSavedLayouts();
-    } catch (err) {
-      setTopologyError(err instanceof Error ? err.message : "Unable to delete layout");
-    } finally {
-      setLayoutBusy(false);
-    }
-  }
-
-  async function saveLayoutPrompt() {
-    const defaultName =
-      savedLayouts.find((layout) => layout.id === activeSavedLayoutId)?.name ?? "";
-    const entered = window.prompt("Save layout as", defaultName);
-    if (entered === null) {
-      return;
-    }
-    await saveNamedLayout(entered);
-  }
-
   function computeRadialPositions(
     groupDevices: typeof filteredGraph.devices,
     cx: number,
@@ -1593,538 +1308,185 @@ export function TopologyWorkspace({
     setLayoutRevision((c) => c + 1);
   }
 
-  function exportTopologyPng() {
-    const cy = cyRef.current;
-    if (!cy) return;
-    const isDark = document.body.classList.contains("theme-dark");
-    const { width, height, offsetX, offsetY } = topologySvgDimensions(cy);
-    // skipText=true: SVG carries only shapes/icons; all text is drawn on canvas
-    // directly so it always renders regardless of browser SVG-as-image quirks.
-    const svgStr = buildTopologySvg(cy, isDark, true);
-    const blob = new Blob([svgStr], { type: "image/svg+xml;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const img = new Image();
-    img.onload = () => {
-      const scale = 2;
-      const canvas = document.createElement("canvas");
-      canvas.width = width * scale;
-      canvas.height = height * scale;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) { URL.revokeObjectURL(url); return; }
-      ctx.scale(scale, scale);
-      ctx.fillStyle = isDark ? "#0c1118" : "#fbfdfe";
-      ctx.fillRect(0, 0, width, height);
-      ctx.drawImage(img, 0, 0, width, height);
-      URL.revokeObjectURL(url);
+  // --- Callbacks handed to the extracted child components. Children never see
+  // --- the cytoscape instance; canvas side effects all happen here.
 
-      // Zone labels above their boxes
-      const zoneLabelColor = isDark ? "#8ab0c8" : "#263b4b";
-      ctx.font = "700 13px Arial, sans-serif";
-      ctx.textAlign = "left";
-      ctx.textBaseline = "alphabetic";
-      ctx.fillStyle = zoneLabelColor;
-      cy.nodes(".zone").forEach((zone) => {
-        const pos = zone.position();
-        const top  = pos.y - zone.height() / 2 + offsetY;
-        const left = pos.x - zone.width()  / 2 + offsetX;
-        ctx.fillText(String(zone.data("label") ?? ""), left + 14, top - 6);
-      });
-
-      // Device labels below icons
-      const deviceLabelColor = isDark ? "#d7e2ea" : "#13212b";
-      ctx.font = "600 12px Arial, sans-serif";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "alphabetic";
-      ctx.fillStyle = deviceLabelColor;
-      cy.nodes(".device").forEach((node) => {
-        const pos = node.position();
-        const nodeScale = Math.max(0.7, Math.min(2.2, Number(node.data("nodeScale") ?? 1)));
-        const size = Math.max(30, Math.min(130, 44 * nodeScale));
-        const x = pos.x + offsetX;
-        const labelY = pos.y + offsetY + size / 2 + 14;
-        const label = String(node.data("label") ?? "");
-        label.split("\n").forEach((line, index) => {
-          ctx.fillText(line, x, labelY + index * 14);
-        });
-      });
-
-      // Edge (link) labels at midpoint of the clipped edge line
-      const edgeTxtColor = isDark ? "#c8dae8" : "#2a4055";
-      const edgeBgColor  = isDark ? "#1d2f40" : "#eef3f7";
-      ctx.font = `${edgeLabelFontSize}px Arial, sans-serif`;
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      cy.edges().forEach((edge) => {
-        const label = String(edge.data("label") ?? "");
-        if (!label) return;
-        const ep = edgeClippedEndpoints(edge, offsetX, offsetY);
-        if (!ep) return;
-        const mx = (ep.sx + ep.tx) / 2;
-        const my = (ep.sy + ep.ty) / 2;
-        const metrics = ctx.measureText(label);
-        const pad = 4;
-        const bw = metrics.width + pad * 2;
-        const bh = edgeLabelFontSize + pad * 2;
-        ctx.fillStyle = edgeBgColor;
-        ctx.fillRect(mx - bw / 2, my - bh / 2, bw, bh);
-        ctx.fillStyle = edgeTxtColor;
-        ctx.fillText(label, mx, my);
-      });
-
-      downloadDataUrl(canvas.toDataURL("image/png"), "netmap-topology.png");
-    };
-    img.src = url;
+  function handleDeviceHover(deviceId: number, hovered: boolean) {
+    setPanelHoveredDeviceId(hovered ? deviceId : null);
+    const edges = cyRef.current?.getElementById(`device-${deviceId}`)?.connectedEdges();
+    if (hovered) edges?.addClass("panel-hover");
+    else edges?.removeClass("panel-hover");
   }
 
-  function exportTopologySvg() {
+  function handleRelationshipHover(relationshipId: number, hovered: boolean) {
+    const edge = cyRef.current?.getElementById(`relationship-${relationshipId}`);
+    if (hovered) {
+      edge?.addClass("panel-hover");
+      edge?.connectedNodes().addClass("panel-hover");
+    } else {
+      edge?.removeClass("panel-hover");
+      edge?.connectedNodes().removeClass("panel-hover");
+    }
+  }
+
+  function handleGroupHover(groupName: string, hovered: boolean) {
     const cy = cyRef.current;
     if (!cy) return;
-    const isDark = document.body.classList.contains("theme-dark");
-    downloadTextFile(buildTopologySvg(cy, isDark), "netmap-topology.svg", "image/svg+xml");
+    if (hovered) {
+      cy.getElementById(groupId(groupName)).addClass("panel-hover");
+      cy.nodes(`[topology_group = "${groupName}"]`).addClass("panel-hover");
+    } else {
+      cy.getElementById(groupId(groupName)).removeClass("panel-hover");
+      cy.nodes(`[topology_group = "${groupName}"]`).removeClass("panel-hover");
+    }
+  }
+
+  function setGroupPref(patch: Partial<GroupDisplayPref>) {
+    setGroupDisplayPrefs((c) => ({ ...c, [selectedGroupForDisplay]: { ...activeGroupDisplay, ...patch } }));
+  }
+
+  function applySpacingChange(newSpacingPercent: number) {
+    const cy = cyRef.current;
+    const nextPositions = { ...layoutPositionsRef.current };
+    if ((activeGroupDisplay.layoutShape ?? "grid") === "radial" && cy) {
+      const groupDevices = filteredGraph.devices.filter((d) => d.topology_group === selectedGroupForDisplay);
+      const curPos = groupDevices.map((d) => {
+        const id = `device-${d.id}`;
+        const node = cy.$id(id);
+        return node.length > 0 ? node.position() : (layoutPositionsRef.current[id] ?? { x: 0, y: 0 });
+      });
+      const cx = curPos.reduce((s, p) => s + p.x, 0) / curPos.length;
+      const cy_ = curPos.reduce((s, p) => s + p.y, 0) / curPos.length;
+      const finalPositions = computeRadialPositions(groupDevices, cx, cy_, newSpacingPercent, activeGroupDisplay.maxRings ?? 1);
+      for (const { id, x, y } of finalPositions) {
+        cy.$id(id).position({ x, y });
+        nextPositions[id] = { x, y };
+      }
+      layoutPositionsRef.current = sanitizeTopologyLayoutPositions(nextPositions);
+      window.localStorage.setItem(savedTopologyLayoutKey(userId), JSON.stringify(layoutPositionsRef.current));
+      writeSavedTopologyLayoutMeta(userId, { savedAt: Date.now() });
+      serverSaveLayoutRef.current(layoutPositionsRef.current, true);
+      refreshOverlayNodes();
+    } else {
+      const gId = groupId(selectedGroupForDisplay);
+      if (cy) {
+        const groupNode = cy.$id(gId);
+        if (groupNode.length > 0) {
+          const bb = groupNode.boundingBox({});
+          const devYs = filteredGraph.devices
+            .filter((d) => d.topology_group === selectedGroupForDisplay)
+            .map((d) => cy.$id(`device-${d.id}`))
+            .filter((n) => n.length > 0)
+            .map((n) => n.position().y);
+          const topY = devYs.length > 0 ? Math.min(...devYs) : (bb.y1 + bb.y2) / 2;
+          nextPositions[gId] = { x: (bb.x1 + bb.x2) / 2, y: topY };
+        }
+      }
+      filteredGraph.devices
+        .filter((d) => d.topology_group === selectedGroupForDisplay)
+        .forEach((d) => { delete nextPositions[`device-${d.id}`]; });
+      layoutPositionsRef.current = sanitizeTopologyLayoutPositions(nextPositions);
+      skipPersistOnNextRenderRef.current = true;
+    }
+    setGroupDisplayPrefs((c) => ({ ...c, [selectedGroupForDisplay]: { ...activeGroupDisplay, spacingScalePercent: newSpacingPercent } }));
+  }
+
+  function applyMaxPerRowChange(value: number) {
+    const cy = cyRef.current;
+    const gId = groupId(selectedGroupForDisplay);
+    const nextPositions = { ...layoutPositionsRef.current };
+    if (cy) {
+      const groupNode = cy.$id(gId);
+      if (groupNode.length > 0) {
+        const bb = groupNode.boundingBox({});
+        const devYs = filteredGraph.devices
+          .filter((d) => d.topology_group === selectedGroupForDisplay)
+          .map((d) => cy.$id(`device-${d.id}`))
+          .filter((n) => n.length > 0)
+          .map((n) => n.position().y);
+        const topY = devYs.length > 0 ? Math.min(...devYs) : (bb.y1 + bb.y2) / 2;
+        nextPositions[gId] = { x: (bb.x1 + bb.x2) / 2, y: topY };
+      }
+    }
+    filteredGraph.devices
+      .filter((d) => d.topology_group === selectedGroupForDisplay)
+      .forEach((d) => { delete nextPositions[`device-${d.id}`]; });
+    layoutPositionsRef.current = sanitizeTopologyLayoutPositions(nextPositions);
+    skipPersistOnNextRenderRef.current = true;
+    setGroupDisplayPrefs((c) => ({ ...c, [selectedGroupForDisplay]: { ...activeGroupDisplay, maxDevicesPerRow: value } }));
+  }
+
+  function handleNodeLabelSizeChange(size: number) {
+    setNodeLabelFontSize(size);
+    try { localStorage.setItem(`netmap.node-label-size.${userId}`, String(size)); } catch {}
+  }
+
+  function handleEdgeLabelSizeChange(size: number) {
+    setEdgeLabelFontSize(size);
+    try { localStorage.setItem(`netmap.edge-label-size.${userId}`, String(size)); } catch {}
+    if (cyRef.current) cyRef.current.$("edge").style("font-size", size);
   }
 
   return (
     <section className="topology-layout" id="topology">
-      {expandedEntitySection && (
-        <div className="topo-entity-backdrop" onClick={() => setExpandedEntitySection(null)} />
-      )}
-      <div className="topo-entity-panel">
-        <div className="topo-entity-actions">
-          {(["devices", "relationships", "groups"] as const).map((section) => {
-            const isActive = expandedEntitySection === section;
-            const count = section === "devices"
-              ? filteredGraph.devices.length
-              : section === "relationships"
-              ? filteredGraph.relationships.length
-              : new Set(filteredGraph.devices.map((d) => d.topology_group).filter(Boolean)).size;
-            const icon = section === "devices"
-              ? <IconServer size={13} />
-              : section === "relationships"
-              ? <Network size={13} />
-              : <IconTopologyRing size={13} />;
-            const label = section === "devices" ? "Devices" : section === "relationships" ? "Links" : "Groups";
-            return (
-              <button
-                key={section}
-                type="button"
-                className={`topo-stat-btn${isActive ? " topo-stat-btn--active" : ""} topo-stat-btn--${section}`}
-                onClick={() => setExpandedEntitySection(isActive ? null : section)}
-              >
-                <span className="topo-stat-icon">{icon}</span>
-                <span className="topo-stat-count">{count}</span>
-                <span className="topo-stat-label">{label}</span>
-                {isActive ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
-              </button>
-            );
-          })}
-        </div>
-        {expandedEntitySection && (
-          <div className="topo-entity-list">
-            <div className="topo-entity-search-wrap">
-              <Search size={12} className="topo-entity-search-icon" />
-              <input
-                className="topo-entity-search"
-                placeholder={`Search ${expandedEntitySection === "relationships" ? "links" : expandedEntitySection}…`}
-                value={entitySearch}
-                onChange={(e) => setEntitySearch(e.target.value)}
-                autoFocus
-              />
-              {entitySearch && (
-                <button type="button" className="topo-entity-search-clear" onClick={() => setEntitySearch("")} aria-label="Clear search">×</button>
-              )}
-            </div>
-            <div className="topo-entity-scroll">
-            {expandedEntitySection === "devices" && (
-              filteredEntityDevices.length === 0
-                ? <p className="topo-entity-empty">{entitySearch ? "No devices match" : "No devices"}</p>
-                : filteredEntityDevices.map((device) => {
-                    const liveStatus = livePingEnabled ? liveStatusByDeviceId.get(device.id) : null;
-                    const dotStatus = device.status === "disabled"
-                      ? "disabled"
-                      : isDeviceMonitoringPaused(device) || !livePingEnabled
-                      ? "paused"
-                      : (liveStatus?.status ?? device.monitor_status ?? device.status);
-                    return (
-                      <button
-                        key={device.id}
-                        type="button"
-                        className={`topo-entity-row${selectedDeviceId === device.id ? " topo-entity-row--active" : ""}`}
-                        onClick={() => { setSelectedDeviceId(device.id); setSelectedRelationshipId(null); setExpandedEntitySection(null); }}
-                        onMouseEnter={() => {
-                          setPanelHoveredDeviceId(device.id);
-                          cyRef.current?.getElementById(`device-${device.id}`)?.connectedEdges().addClass("panel-hover");
-                        }}
-                        onMouseLeave={() => {
-                          setPanelHoveredDeviceId(null);
-                          cyRef.current?.getElementById(`device-${device.id}`)?.connectedEdges().removeClass("panel-hover");
-                        }}
-                      >
-                        <span className={`status-dot status-dot--sm ${dotStatus}`} />
-                        <span className="topo-entity-name">{deviceLabel(device)}</span>
-                        <span className="topo-entity-meta">{device.ip_address}</span>
-                      </button>
-                    );
-                  })
-            )}
-            {expandedEntitySection === "relationships" && (
-              filteredEntityRelationships.length === 0
-                ? <p className="topo-entity-empty">{entitySearch ? "No links match" : "No links"}</p>
-                : filteredEntityRelationships.map((rel) => {
-                    const src = liveGraph.devices.find((d) => d.id === rel.source_device_id);
-                    const tgt = liveGraph.devices.find((d) => d.id === rel.target_device_id);
-                    return (
-                      <button
-                        key={rel.id}
-                        type="button"
-                        className={`topo-entity-row topo-entity-row--relationship${selectedRelationshipId === rel.id ? " topo-entity-row--active" : ""}`}
-                        onClick={() => { setSelectedRelationshipId(rel.id); setSelectedDeviceId(null); setExpandedEntitySection(null); }}
-                        onMouseEnter={() => {
-                          const edge = cyRef.current?.getElementById(`relationship-${rel.id}`);
-                          edge?.addClass("panel-hover");
-                          edge?.connectedNodes().addClass("panel-hover");
-                        }}
-                        onMouseLeave={() => {
-                          const edge = cyRef.current?.getElementById(`relationship-${rel.id}`);
-                          edge?.removeClass("panel-hover");
-                          edge?.connectedNodes().removeClass("panel-hover");
-                        }}
-                      >
-                        <span className="topo-entity-name">{src ? deviceLabel(src) : `#${rel.source_device_id}`}</span>
-                        <span className="topo-entity-arrow">→</span>
-                        <span className="topo-entity-name">{tgt ? deviceLabel(tgt) : `#${rel.target_device_id}`}</span>
-                        {rel.relationship_type && <span className="topo-entity-tag">{rel.relationship_type}</span>}
-                      </button>
-                    );
-                  })
-            )}
-            {expandedEntitySection === "groups" && (
-              filteredEntityGroups.length === 0
-                ? <p className="topo-entity-empty">{entitySearch ? "No groups match" : "No groups"}</p>
-                : filteredEntityGroups.map((groupName) => {
-                    const isHidden = hiddenGroupNames.has(groupName);
-                    const count = liveGraph.devices.filter(
-                      (d) => d.status !== "disabled" && (d.topology_group ?? "Ungrouped") === groupName,
-                    ).length;
-                    return (
-                      <div
-                        key={groupName}
-                        className={`topo-entity-row topo-entity-row--group${isHidden ? " topo-entity-row--hidden" : ""}`}
-                        onMouseEnter={() => {
-                          const cy = cyRef.current;
-                          if (!cy) return;
-                          cy.getElementById(groupId(groupName)).addClass("panel-hover");
-                          cy.nodes(`[topology_group = "${groupName}"]`).addClass("panel-hover");
-                        }}
-                        onMouseLeave={() => {
-                          const cy = cyRef.current;
-                          if (!cy) return;
-                          cy.getElementById(groupId(groupName)).removeClass("panel-hover");
-                          cy.nodes(`[topology_group = "${groupName}"]`).removeClass("panel-hover");
-                        }}
-                      >
-                        <span className="topo-entity-group-dot" />
-                        <span className="topo-entity-name">{groupName}</span>
-                        <span className="topo-entity-meta">{count} device{count !== 1 ? "s" : ""}</span>
-                        <button
-                          type="button"
-                          className="topo-entity-eye"
-                          onClick={() => toggleGroupVisibility(groupName)}
-                          title={isHidden ? "Show group" : "Hide group"}
-                        >
-                          {isHidden ? <EyeOff size={12} /> : <Eye size={12} />}
-                        </button>
-                      </div>
-                    );
-                  })
-            )}
-            </div>
-          </div>
-        )}
-      </div>
-      <div className="topology-toolbar topology-toolbar--ribbon">
-        <div className="toolbar-group">
-          <div className="toolbar-group-controls">
-            <select
-              className="toolbar-select"
-              value={selectedSiteId ?? 0}
-              onChange={(event) => {
-                const id = Number(event.target.value);
-                setSelectedSiteId(id === 0 ? null : id);
-              }}
-            >
-              <option value={0}>All Sites</option>
-              {sites.map((site) => (
-                <option key={site.id} value={site.id}>{site.display_name ?? site.name}</option>
-              ))}
-            </select>
-            <span className="inv-stat-chip inv-stat-chip--green">
-              <IconWifi size={13} className="inv-stat-chip-icon" />
-              <strong className="inv-stat-chip-count">{topoStatusCounts.online}</strong>
-              <span className="inv-stat-chip-label">Online</span>
-            </span>
-            <span className={`inv-stat-chip ${topoStatusCounts.offline > 0 ? "inv-stat-chip--red" : "inv-stat-chip--muted"}`}>
-              <IconWifiOff size={13} className="inv-stat-chip-icon" />
-              <strong className="inv-stat-chip-count">{topoStatusCounts.offline}</strong>
-              <span className="inv-stat-chip-label">Offline</span>
-            </span>
-          </div>
-        </div>
-        <div className="toolbar-divider" />
-        <div className="toolbar-group">
-          <div className="toolbar-group-controls">
-            <button type="button" className="nm-btn nm-btn--sm" onClick={fitTopology}>Fit</button>
-            <button type="button" className="nm-btn nm-btn--sm" onClick={resetLayout}>Reset view</button>
-            {canWrite && (
-              <>
-                <button type="button" className="nm-btn nm-btn--sm" onClick={exportTopologyPng}>PNG</button>
-                <button type="button" className="nm-btn nm-btn--sm" onClick={exportTopologySvg}>SVG</button>
-              </>
-            )}
-          </div>
-        </div>
-        <div className="toolbar-divider" />
-        <div className="toolbar-group">
-          <div className="toolbar-group-controls toolbar-group--toggles">
-            <label className="toolbar-toggle">
-              <input type="checkbox" checked={showNodeIcons} onChange={(e) => setShowNodeIcons(e.target.checked)} />
-              Icons
-            </label>
-            <label className="toolbar-toggle">
-              <input type="checkbox" checked={showNodeLabels} onChange={(e) => setShowNodeLabels(e.target.checked)} />
-              Text
-            </label>
-          </div>
-        </div>
-        <div className="toolbar-divider" />
-        <div className="toolbar-group">
-          <div className="toolbar-group-controls">
-            <div className="toolbar-dropdown-wrapper">
-              <button
-                type="button"
-                className={showGroupsPanel ? "nm-btn nm-btn--sm nm-btn--active" : "nm-btn nm-btn--sm"}
-                onClick={() => setShowGroupsPanel((c) => !c)}
-              >
-                Groups
-                {hiddenGroupNames.size > 0 && (
-                  <span className="toolbar-btn-badge">{hiddenGroupNames.size} hidden</span>
-                )}
-                <ChevronDown size={11} style={{ transition: "transform 0.18s", transform: showGroupsPanel ? "rotate(180deg)" : undefined }} />
-              </button>
-              {showGroupsPanel && (
-                <div className="toolbar-groups-panel">
-                  <div className="toolbar-groups-actions">
-                    <button type="button" className="nm-btn nm-btn--sm" onClick={() => setHiddenGroupNames(new Set())}>
-                      Show all
-                    </button>
-                    <button type="button" className="nm-btn nm-btn--sm" onClick={() => setHiddenGroupNames(new Set(allGroupNames))}>
-                      Hide all
-                    </button>
-                  </div>
-                  <div className="toolbar-groups-list">
-                    {allGroupNames.map((groupName) => {
-                      const isHidden = hiddenGroupNames.has(groupName);
-                      const total = liveGraph.devices.filter(
-                        (d) => d.status !== "disabled" && (d.topology_group ?? "Ungrouped") === groupName,
-                      ).length;
-                      return (
-                        <button
-                          key={groupName}
-                          type="button"
-                          className={`toolbar-group-row${isHidden ? " toolbar-group-row--hidden" : ""}`}
-                          onClick={() => toggleGroupVisibility(groupName)}
-                          title={isHidden ? "Click to show" : "Click to hide"}
-                        >
-                          <span className="toolbar-group-eye">
-                            {isHidden ? <EyeOff size={12} /> : <Eye size={12} />}
-                          </span>
-                          <span className="toolbar-group-name">{groupName}</span>
-                          <span className="toolbar-group-count">{total}</span>
-                        </button>
-                      );
-                    })}
-                    {allGroupNames.length === 0 && (
-                      <p className="toolbar-groups-empty">No groups yet</p>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-        <div className="toolbar-divider" />
-        <div className="toolbar-group">
-          <div className="toolbar-group-controls">
-            <div className="toolbar-dropdown-wrapper">
-              <button
-                type="button"
-                className={showDisplaySettings ? "nm-btn nm-btn--sm nm-btn--active" : "nm-btn nm-btn--sm"}
-                onClick={() => setShowDisplaySettings((c) => !c)}
-              >
-                Display
-                <ChevronDown size={11} style={{ transition: "transform 0.18s", transform: showDisplaySettings ? "rotate(180deg)" : undefined }} />
-              </button>
-              {showDisplaySettings && (
-                <div className="toolbar-display-panel">
-                  <label>
-                    Group
-                    <select value={selectedGroupForDisplay} onChange={(e) => setSelectedGroupForDisplay(e.target.value)}>
-                      {visibleGroupNames.map((groupName) => (
-                        <option key={`display-${groupName}`} value={groupName}>{groupName}</option>
-                      ))}
-                    </select>
-                  </label>
-                  <div className="toolbar-display-shape">
-                    {(["grid", "radial"] as GroupLayoutShape[]).map((shape) => (
-                      <button
-                        key={shape}
-                        type="button"
-                        className={`nm-btn nm-btn--sm${(activeGroupDisplay.layoutShape ?? "grid") === shape ? " nm-btn--active" : ""}`}
-                        onClick={() => setGroupDisplayPrefs((c) => ({ ...c, [selectedGroupForDisplay]: { ...activeGroupDisplay, layoutShape: shape } }))}
-                      >
-                        {shape === "grid" ? "Grid" : "Radial"}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="toolbar-display-actions">
-                    <button
-                      type="button"
-                      className="nm-btn nm-btn--sm"
-                      disabled={!visibleGroupNames.includes(selectedGroupForDisplay)}
-                      onClick={(activeGroupDisplay.layoutShape ?? "grid") === "radial" ? autoArrangeRadialSelectedGroup : autoArrangeSelectedGroup}
-                    >
-                      Auto-arrange
-                    </button>
-                    <button type="button" className="nm-btn nm-btn--sm" onClick={resetSelectedGroup} disabled={!visibleGroupNames.includes(selectedGroupForDisplay)}>
-                      Reset group
-                    </button>
-                  </div>
-                  <label>
-                    Node size <span>{activeGroupDisplay.nodeScalePercent}%</span>
-                    <input type="range" min={70} max={180} step={5} value={activeGroupDisplay.nodeScalePercent}
-                      onChange={(e) => setGroupDisplayPrefs((c) => ({ ...c, [selectedGroupForDisplay]: { ...activeGroupDisplay, nodeScalePercent: Number(e.target.value) } }))} />
-                  </label>
-                  <label>
-                    Spacing <span>{activeGroupDisplay.spacingScalePercent}%</span>
-                    <input type="range" min={80} max={220} step={10} value={activeGroupDisplay.spacingScalePercent}
-                      onChange={(e) => {
-                        const newSpacingPercent = Number(e.target.value);
-                        const cy = cyRef.current;
-                        const nextPositions = { ...layoutPositionsRef.current };
-                        if ((activeGroupDisplay.layoutShape ?? "grid") === "radial" && cy) {
-                          const groupDevices = filteredGraph.devices.filter((d) => d.topology_group === selectedGroupForDisplay);
-                          const curPos = groupDevices.map((d) => {
-                            const id = `device-${d.id}`;
-                            const node = cy.$id(id);
-                            return node.length > 0 ? node.position() : (layoutPositionsRef.current[id] ?? { x: 0, y: 0 });
-                          });
-                          const cx = curPos.reduce((s, p) => s + p.x, 0) / curPos.length;
-                          const cy_ = curPos.reduce((s, p) => s + p.y, 0) / curPos.length;
-                          const finalPositions = computeRadialPositions(groupDevices, cx, cy_, newSpacingPercent, activeGroupDisplay.maxRings ?? 1);
-                          for (const { id, x, y } of finalPositions) {
-                            cy.$id(id).position({ x, y });
-                            nextPositions[id] = { x, y };
-                          }
-                          layoutPositionsRef.current = sanitizeTopologyLayoutPositions(nextPositions);
-                          window.localStorage.setItem(savedTopologyLayoutKey(userId), JSON.stringify(layoutPositionsRef.current));
-                          writeSavedTopologyLayoutMeta(userId, { savedAt: Date.now() });
-                          serverSaveLayoutRef.current(layoutPositionsRef.current, true);
-                          refreshOverlayNodes();
-                        } else {
-                          const gId = groupId(selectedGroupForDisplay);
-                          if (cy) {
-                            const groupNode = cy.$id(gId);
-                            if (groupNode.length > 0) {
-                              const bb = groupNode.boundingBox({});
-                              const devYs = filteredGraph.devices
-                                .filter((d) => d.topology_group === selectedGroupForDisplay)
-                                .map((d) => cy.$id(`device-${d.id}`))
-                                .filter((n) => n.length > 0)
-                                .map((n) => n.position().y);
-                              const topY = devYs.length > 0 ? Math.min(...devYs) : (bb.y1 + bb.y2) / 2;
-                              nextPositions[gId] = { x: (bb.x1 + bb.x2) / 2, y: topY };
-                            }
-                          }
-                          filteredGraph.devices
-                            .filter((d) => d.topology_group === selectedGroupForDisplay)
-                            .forEach((d) => { delete nextPositions[`device-${d.id}`]; });
-                          layoutPositionsRef.current = sanitizeTopologyLayoutPositions(nextPositions);
-                          skipPersistOnNextRenderRef.current = true;
-                        }
-                        setGroupDisplayPrefs((c) => ({ ...c, [selectedGroupForDisplay]: { ...activeGroupDisplay, spacingScalePercent: newSpacingPercent } }));
-                      }} />
-                  </label>
-                  {(activeGroupDisplay.layoutShape ?? "grid") === "radial" && (
-                    <label>
-                      Rings <span>{activeGroupDisplay.maxRings ?? 1}</span>
-                      <input type="range" min={1} max={5} step={1} value={activeGroupDisplay.maxRings ?? 1}
-                        onChange={(e) => setGroupDisplayPrefs((c) => ({ ...c, [selectedGroupForDisplay]: { ...activeGroupDisplay, maxRings: Number(e.target.value) } }))} />
-                    </label>
-                  )}
-                  {(activeGroupDisplay.layoutShape ?? "grid") !== "radial" && <label>
-                    Per row <span>{activeGroupDisplay.maxDevicesPerRow}</span>
-                    <input type="range" min={3} max={8} step={1} value={activeGroupDisplay.maxDevicesPerRow}
-                      onChange={(e) => {
-                        const cy = cyRef.current;
-                        const gId = groupId(selectedGroupForDisplay);
-                        const nextPositions = { ...layoutPositionsRef.current };
-                        if (cy) {
-                          const groupNode = cy.$id(gId);
-                          if (groupNode.length > 0) {
-                            const bb = groupNode.boundingBox({});
-                            const devYs = filteredGraph.devices
-                              .filter((d) => d.topology_group === selectedGroupForDisplay)
-                              .map((d) => cy.$id(`device-${d.id}`))
-                              .filter((n) => n.length > 0)
-                              .map((n) => n.position().y);
-                            const topY = devYs.length > 0 ? Math.min(...devYs) : (bb.y1 + bb.y2) / 2;
-                            nextPositions[gId] = { x: (bb.x1 + bb.x2) / 2, y: topY };
-                          }
-                        }
-                        filteredGraph.devices
-                          .filter((d) => d.topology_group === selectedGroupForDisplay)
-                          .forEach((d) => { delete nextPositions[`device-${d.id}`]; });
-                        layoutPositionsRef.current = sanitizeTopologyLayoutPositions(nextPositions);
-                        skipPersistOnNextRenderRef.current = true;
-                        setGroupDisplayPrefs((c) => ({ ...c, [selectedGroupForDisplay]: { ...activeGroupDisplay, maxDevicesPerRow: Number(e.target.value) } }));
-                      }} />
-                  </label>}
-                  <label>
-                    Background <span>{groupZoneOpacityPercent}%</span>
-                    <input type="range" min={0} max={100} step={5} value={groupZoneOpacityPercent}
-                      onChange={(e) => setGroupZoneOpacityPercent(Number(e.target.value))} />
-                  </label>
-                  <label>
-                    Device labels <span>{nodeLabelFontSize}px</span>
-                    <input type="range" min={9} max={20} step={1} value={nodeLabelFontSize}
-                      onChange={(e) => {
-                        const size = Number(e.target.value);
-                        setNodeLabelFontSize(size);
-                        try { localStorage.setItem(`netmap.node-label-size.${userId}`, String(size)); } catch {}
-                      }} />
-                  </label>
-                  <label>
-                    Link labels <span>{edgeLabelFontSize}px</span>
-                    <input type="range" min={10} max={24} step={1} value={edgeLabelFontSize}
-                      onChange={(e) => {
-                        const size = Number(e.target.value);
-                        setEdgeLabelFontSize(size);
-                        try { localStorage.setItem(`netmap.edge-label-size.${userId}`, String(size)); } catch {}
-                        if (cyRef.current) cyRef.current.$("edge").style("font-size", size);
-                      }} />
-                  </label>
-                </div>
-              )}
-            </div>
-            {canWrite && (
-              <>
-                <button type="button" className="nm-btn nm-btn--sm nm-btn--primary" onClick={() => setShowDeviceForm(true)}>+ Device</button>
-                <button type="button" className="nm-btn nm-btn--sm" onClick={() => setShowScanModal(true)}>Scan</button>
-                <button type="button" className="nm-btn nm-btn--sm" disabled={liveGraph.devices.length < 2} onClick={() => setShowRelationshipForm(true)}>+ Link</button>
-              </>
-            )}
-          </div>
-        </div>
-      </div>
+      <EntityList
+        devices={filteredGraph.devices}
+        relationships={filteredGraph.relationships}
+        allDevices={liveGraph.devices}
+        allGroupNames={allGroupNames}
+        groupDeviceCounts={groupDeviceCounts}
+        hiddenGroupNames={hiddenGroupNames}
+        livePingEnabled={livePingEnabled}
+        liveStatusByDeviceId={liveStatusByDeviceId}
+        selectedDeviceId={selectedDeviceId}
+        selectedRelationshipId={selectedRelationshipId}
+        onSelectDevice={(deviceId) => { setSelectedDeviceId(deviceId); setSelectedRelationshipId(null); }}
+        onSelectRelationship={(relationshipId) => { setSelectedRelationshipId(relationshipId); setSelectedDeviceId(null); }}
+        onToggleGroupVisibility={toggleGroupVisibility}
+        onDeviceHover={handleDeviceHover}
+        onRelationshipHover={handleRelationshipHover}
+        onGroupHover={handleGroupHover}
+      />
+      <TopologyToolbar
+        sites={sites}
+        selectedSiteId={selectedSiteId}
+        statusCounts={topoStatusCounts}
+        canWrite={canWrite}
+        totalDeviceCount={liveGraph.devices.length}
+        showNodeIcons={showNodeIcons}
+        showNodeLabels={showNodeLabels}
+        allGroupNames={allGroupNames}
+        visibleGroupNames={visibleGroupNames}
+        groupDeviceCounts={groupDeviceCounts}
+        hiddenGroupNames={hiddenGroupNames}
+        selectedGroupForDisplay={selectedGroupForDisplay}
+        activeGroupDisplay={activeGroupDisplay}
+        groupZoneOpacityPercent={groupZoneOpacityPercent}
+        nodeLabelFontSize={nodeLabelFontSize}
+        edgeLabelFontSize={edgeLabelFontSize}
+        onSiteChange={setSelectedSiteId}
+        onFit={fitTopology}
+        onResetLayout={resetLayout}
+        onExportPng={() => { if (cyRef.current) exportTopologyPng(cyRef.current, edgeLabelFontSize); }}
+        onExportSvg={() => { if (cyRef.current) exportTopologySvg(cyRef.current); }}
+        onShowNodeIconsChange={setShowNodeIcons}
+        onShowNodeLabelsChange={setShowNodeLabels}
+        onToggleGroupVisibility={toggleGroupVisibility}
+        onShowAllGroups={() => setHiddenGroupNames(new Set())}
+        onHideAllGroups={() => setHiddenGroupNames(new Set(allGroupNames))}
+        onSelectGroupForDisplay={setSelectedGroupForDisplay}
+        onSetGroupPref={setGroupPref}
+        onAutoArrange={(activeGroupDisplay.layoutShape ?? "grid") === "radial" ? autoArrangeRadialSelectedGroup : autoArrangeSelectedGroup}
+        onResetGroup={resetSelectedGroup}
+        onSpacingChange={applySpacingChange}
+        onMaxPerRowChange={applyMaxPerRowChange}
+        onZoneOpacityChange={setGroupZoneOpacityPercent}
+        onNodeLabelSizeChange={handleNodeLabelSizeChange}
+        onEdgeLabelSizeChange={handleEdgeLabelSizeChange}
+        onAddDevice={() => setShowDeviceForm(true)}
+        onScan={() => setShowScanModal(true)}
+        onAddLink={() => setShowRelationshipForm(true)}
+      />
       {topologyError && <div className="form-error">{topologyError}</div>}
       <div className={showDetailsPanel ? "topology-content details-open" : "topology-content"}>
         <div className="graph-surface">
@@ -2162,39 +1524,30 @@ export function TopologyWorkspace({
           {filteredGraph.devices.length === 0 && <div className="empty-graph">No devices match the current view</div>}
         </div>
         {showDetailsPanel && (
-          <aside className="details-panel">
-            {selectedDevice ? (
-              <DeviceDetails
-                canViewSecurity={canViewSecurity}
-                canWrite={canWrite}
-                accessToken={accessToken || ""}
-                device={selectedDevice}
-                disabled={busy}
-                groups={groups}
-                snmpProfiles={snmpProfiles}
-                sites={sites}
-                onGraphChange={onGraphChange}
-                liveStatus={livePingEnabled ? (liveStatusByDeviceId.get(selectedDevice.id) ?? null) : null}
-                onDelete={deleteSelectedDevice}
-                onClone={() => {
-                  setCloningDevice(selectedDevice);
-                  setShowDeviceForm(true);
-                }}
-                onSubmit={(payload) => updateDevice(selectedDevice.id, payload)}
-                securityLoading={deviceSecurityLoading}
-                securitySummary={deviceSecuritySummary}
-              />
-            ) : selectedRelationship ? (
-              <RelationshipDetails
-                canWrite={canWrite}
-                devices={liveGraph.devices}
-                disabled={busy}
-                relationship={selectedRelationship}
-                onDelete={() => void deleteSelectedRelationship()}
-                onEdit={() => setShowRelationshipEditForm(true)}
-              />
-            ) : null}
-          </aside>
+          <DetailsPanel
+            accessToken={accessToken}
+            canViewSecurity={canViewSecurity}
+            canWrite={canWrite}
+            selectedDevice={selectedDevice}
+            selectedRelationship={selectedRelationship}
+            allDevices={liveGraph.devices}
+            busy={busy}
+            groups={groups}
+            snmpProfiles={snmpProfiles}
+            sites={sites}
+            liveStatus={selectedDevice && livePingEnabled ? (liveStatusByDeviceId.get(selectedDevice.id) ?? null) : null}
+            securityLoading={deviceSecurityLoading}
+            securitySummary={deviceSecuritySummary}
+            onGraphChange={onGraphChange}
+            onDeleteDevice={deleteSelectedDevice}
+            onCloneDevice={(device) => {
+              setCloningDevice(device);
+              setShowDeviceForm(true);
+            }}
+            onSubmitDevice={(payload) => selectedDevice ? updateDevice(selectedDevice.id, payload) : Promise.resolve()}
+            onDeleteRelationship={() => void deleteSelectedRelationship()}
+            onEditRelationship={() => setShowRelationshipEditForm(true)}
+          />
         )}
       </div>
       {showDeviceForm && (
