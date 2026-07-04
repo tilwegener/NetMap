@@ -8,6 +8,7 @@ import { deviceLabel, formatEventTime, toDateTimeLocal } from "../../utils/forma
 import { SecurityFilterInput } from "../../components/SecurityFilterInput";
 import { useConfirm } from "../../components/ConfirmDialog";
 import { ClickableCell } from "../../components/ClickableCell";
+import { Modal } from "../../components/Modal";
 
 export function SecurityWorkspace({
   accessToken,
@@ -34,6 +35,9 @@ export function SecurityWorkspace({
   const [error, setError] = useState<string | null>(null);
   const [savedSearches, setSavedSearches] = useState<SavedSecuritySearch[]>([]);
   const [selectedSearchId, setSelectedSearchId] = useState<number | "">("");
+  const [showSaveSearchModal, setShowSaveSearchModal] = useState(false);
+  const [saveSearchName, setSaveSearchName] = useState("");
+  const [saveSearchBusy, setSaveSearchBusy] = useState(false);
   const tableRef = useRef<HTMLDivElement | null>(null);
   const setTopbarNote = useContext(TopbarNoteCtx);
   const pageSize = 100;
@@ -43,15 +47,18 @@ export function SecurityWorkspace({
     api.listSavedSecuritySearches(accessToken).then(setSavedSearches).catch(() => { /* non-critical */ });
   }, [accessToken]);
 
-  async function saveCurrentSearch() {
-    if (!accessToken) return;
-    const name = prompt("Name this search:", "");
-    if (!name?.trim()) return;
+  async function saveCurrentSearch(name: string) {
+    if (!accessToken || !name.trim()) return;
+    setSaveSearchBusy(true);
     try {
       await api.createSavedSecuritySearch(accessToken, name.trim(), draftFilters as unknown as Record<string, unknown>);
       setSavedSearches(await api.listSavedSecuritySearches(accessToken));
+      setShowSaveSearchModal(false);
+      setSaveSearchName("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save search");
+    } finally {
+      setSaveSearchBusy(false);
     }
   }
 
@@ -303,7 +310,7 @@ export function SecurityWorkspace({
                 <option key={s.id} value={String(s.id)}>{s.name}</option>
               ))}
             </select>
-            <button type="button" className="clear-filters" onClick={() => void saveCurrentSearch()} title="Save the current filters as a named search">
+            <button type="button" className="clear-filters" onClick={() => { setSaveSearchName(""); setShowSaveSearchModal(true); }} title="Save the current filters as a named search">
               Save search
             </button>
             {selectedSearchId !== "" && (
@@ -410,6 +417,33 @@ export function SecurityWorkspace({
           </div>
         </div>
       </div>
+      {showSaveSearchModal && (
+        <Modal
+          title="Save search"
+          onCancel={() => { setShowSaveSearchModal(false); setSaveSearchName(""); }}
+          headerSubmitLabel={saveSearchBusy ? "Saving…" : "Save"}
+          headerSubmitFormId="save-search-form"
+          headerSubmitDisabled={saveSearchBusy || !saveSearchName.trim()}
+        >
+          <form
+            id="save-search-form"
+            className="modal-form"
+            onSubmit={(event) => { event.preventDefault(); void saveCurrentSearch(saveSearchName); }}
+          >
+            <label>
+              Search name
+              <input
+                required
+                maxLength={120}
+                placeholder="e.g. Blocked WAN traffic"
+                value={saveSearchName}
+                onChange={(event) => setSaveSearchName(event.target.value)}
+              />
+            </label>
+            <p className="tool-note">Saves the current filter set under this name. Saved searches are private to your account.</p>
+          </form>
+        </Modal>
+      )}
     </section>
   );
 }
