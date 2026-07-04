@@ -242,3 +242,19 @@ export function populateFormFromProfile(profile: NotificationProfile): Notificat
   }
 }
 
+
+/** Human label for an alert channel target ("profile:<id>" or a legacy channel key). */
+export function notificationTargetLabel(profiles: NotificationProfile[], target: string): string {
+  if (target.startsWith("profile:")) {
+    const id = Number(target.slice("profile:".length));
+    const profile = profiles.find((item) => item.id === id);
+    return profile ? profile.name : `Profile #${id}`;
+  }
+  return legacyChannelLabels[target] ?? target;
+}
+
+/** Human label for the delivery method a saved profile uses. */
+export function notificationProfileMethodLabel(profile: NotificationProfile): string {
+  const method = profile.config.method || "";
+  return profile.config.method_label || notificationMethodLabels[method] || "Custom Apprise URL";
+}
