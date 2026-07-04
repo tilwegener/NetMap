@@ -46,6 +46,22 @@ export function App() {
   const canAccessAdmin = user?.role === "SuperAdmin";
   const [openObservationCount, setOpenObservationCount] = useState(0);
 
+  const screen = useMemo(() => {
+    if (resetToken) return "reset-password";
+    if (loading || needsSetup === null) return "loading";
+    if (needsSetup) return "setup";
+    if (!accessToken || !user) return "login";
+    return "dashboard";
+  }, [accessToken, loading, needsSetup, user, resetToken]);
+
+  const documentTitle = useMemo(() => {
+    if (screen === "dashboard") return routeDocumentTitle(currentRoute);
+    if (screen === "reset-password") return "Reset password";
+    if (screen === "setup") return "Setup";
+    if (screen === "login") return "Login";
+    return "Loading";
+  }, [currentRoute, screen]);
+
   useEffect(() => {
     void api.adminPublicSettings().then(setAppSettings).catch(() => {});
   }, []);
@@ -89,25 +105,20 @@ export function App() {
   useEffect(() => {
     const bodyClass = routeBodyClass(currentRoute);
     document.body.classList.add(bodyClass);
-    document.title = routeDocumentTitle(currentRoute);
     return () => {
       document.body.classList.remove(bodyClass);
     };
   }, [currentRoute]);
+
+  useEffect(() => {
+    document.title = documentTitle;
+  }, [documentTitle]);
 
   // Adopt tokens rotated inside the API client (proactive refresh or a
   // transparent 401 retry) so subsequent calls use the fresh access token.
   useEffect(() => subscribeTokenRefresh(setTokens), []);
 
   const bootstrapDoneRef = useRef(false);
-
-  const screen = useMemo(() => {
-    if (resetToken) return "reset-password";
-    if (loading || needsSetup === null) return "loading";
-    if (needsSetup) return "setup";
-    if (!accessToken || !user) return "login";
-    return "dashboard";
-  }, [accessToken, loading, needsSetup, user, resetToken]);
 
   const {
     graph, summary, loadInitial, refreshTopology,

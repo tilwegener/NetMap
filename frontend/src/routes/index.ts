@@ -70,7 +70,7 @@ export function routeBodyClass(route: AppRoute): string {
 
 export function routeDocumentTitle(route: AppRoute): string {
   const copy = appRouteCopy[route];
-  return copy ? `NetMap — ${copy.title}` : "NetMap";
+  return copy ? copy.title : "NetMap";
 }
 
 export function navigateToRoute(route: AppRoute, replace = false) {

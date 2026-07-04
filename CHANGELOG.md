@@ -24,6 +24,7 @@
 - **Instant Monitoring re-entry** — the Monitoring workspace keeps an in-memory stale-while-revalidate snapshot of the fleet summary, device table, and service checks. Returning to Monitoring renders the last known data immediately, then refreshes with a lightweight delta request when fresh or a full refresh when stale.
 
 ### Changed
+- **Browser tab titles now show only the current screen** — authenticated pages use their page name without the `NetMap —` prefix, and login/setup/reset/loading states now show their own tab title instead of inheriting Overview.
 - **What's New release notes now render inline Markdown** — changelog bullets in the popup preserve formatting such as links, inline code, emphasis, strikethrough, and bold text while sanitising rendered HTML before display.
 - **Unified table row hover across the app** — VLANs, Inventory, Monitoring, IPAM, Security, Overview device lists, audit logs, admin tables, the icon manager, and the topology entity list now share one subtle hover treatment (new `--nm-row-hover` design token) **with the VLAN table's teal left-edge accent** in both themes, replacing a patchwork of per-table hover colours.
 - **Tools action buttons calmed down** — Lookup, Ping, Traceroute and the other tool submit buttons use the soft accent treatment (tinted background, teal text) instead of a solid bright block, which was overpowering in dark mode.
