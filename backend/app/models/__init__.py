@@ -4,6 +4,7 @@ from app.models.alert_event import AlertEvent
 from app.models.audit_log import AuditLog
 from app.models.auth_session import LoginThrottleState, RefreshTokenState
 from app.models.device import Device, DeviceStatus
+from app.models.device_type import DeviceType
 from app.models.discovery import DiscoveryObservation, DiscoveryScan, DiscoverySchedule
 from app.models.lldp import LldpNeighbour
 from app.models.firewall_event import FirewallEvent
@@ -25,6 +26,7 @@ __all__ = [
     "PasswordResetToken",
     "RefreshTokenState",
     "Device",
+    "DeviceType",
     "DeviceRelationship",
     "DeviceStatus",
     "DiscoveryObservation",

@@ -45,7 +45,7 @@ def get_db() -> Generator[Session, None, None]:
 
 
 def init_db() -> None:
-    from app.models import alert_rule, auth_session, audit_log, device, dhcp_lease, discovery, ip_reservation, monitor_history, notification_delivery, notification_profile, password_reset_token, port_target, relationship, saved_search, site, snmp_profile, subnet, system_setting, topology_group, topology_layout, user, user_device_favourite  # noqa: F401
+    from app.models import alert_rule, auth_session, audit_log, device, device_type, dhcp_lease, discovery, ip_reservation, monitor_history, notification_delivery, notification_profile, password_reset_token, port_target, relationship, saved_search, site, snmp_profile, subnet, system_setting, topology_group, topology_layout, user, user_device_favourite  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
     _ensure_migrations_table()
@@ -131,6 +131,7 @@ def apply_sqlite_schema_updates() -> None:
         _run_migration(conn, inspector, "0039_notification_deliveries", _migrate_notification_deliveries)
         _run_migration(conn, inspector, "0040_ip_reservation_expiry", _migrate_ip_reservation_expiry)
         _run_migration(conn, inspector, "0041_saved_security_searches", _migrate_saved_security_searches)
+        _run_migration(conn, inspector, "0042_device_types", _migrate_device_types)
 
 
 def _run_migration(conn, inspector, name: str, fn) -> None:
@@ -904,3 +905,23 @@ def _migrate_saved_security_searches(conn, inspector) -> None:
     )
     conn.execute(text("CREATE INDEX IF NOT EXISTS ix_saved_security_searches_id ON saved_security_searches (id)"))
     conn.execute(text("CREATE INDEX IF NOT EXISTS ix_saved_security_searches_owner ON saved_security_searches (owner_user_id)"))
+
+
+def _migrate_device_types(conn, inspector) -> None:
+    conn.execute(
+        text(
+            """
+            CREATE TABLE IF NOT EXISTS device_types (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                value VARCHAR(80) NOT NULL UNIQUE,
+                label VARCHAR(80) NOT NULL,
+                icon VARCHAR(80) NOT NULL DEFAULT 'device',
+                is_builtin BOOLEAN NOT NULL DEFAULT 0,
+                created_at DATETIME NOT NULL,
+                updated_at DATETIME NOT NULL
+            )
+            """
+        )
+    )
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_device_types_id ON device_types (id)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_device_types_value ON device_types (value)"))

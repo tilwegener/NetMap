@@ -5,12 +5,16 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.api.deps import require_super_admin
+from app.api.deps import get_current_user, require_super_admin
 from app.core.config import settings
 from app.db.session import get_db
+from app.models.device import Device
+from app.models.device_type import DeviceType
 from app.models.system_setting import SystemSetting
 from app.models.user import User
 from app.schemas.admin import (
+    DeviceTypeCreate,
+    DeviceTypeRead,
     NotificationSettings,
     NotificationSettingsUpdate,
     PermissionMeta,
@@ -20,6 +24,7 @@ from app.schemas.admin import (
     SystemSettingsRead,
     SystemSettingsUpdate,
     TestNotificationRequest,
+    normalize_device_type_value,
 )
 from app.schemas.notification import (
     NotificationProfileCreate,
@@ -64,6 +69,27 @@ DEFAULTS: dict[str, str] = {
     "active_network_public_targets_enabled": str(settings.active_network_public_targets_enabled).lower(),
 }
 
+BUILT_IN_DEVICE_TYPES: tuple[DeviceTypeRead, ...] = (
+    DeviceTypeRead(value="router", label="Router", icon="router", is_builtin=True),
+    DeviceTypeRead(value="switch", label="Switch", icon="switch", is_builtin=True),
+    DeviceTypeRead(value="firewall", label="Firewall", icon="firewall", is_builtin=True),
+    DeviceTypeRead(value="server", label="Server", icon="server", is_builtin=True),
+    DeviceTypeRead(value="wireless", label="Wireless", icon="wireless", is_builtin=True),
+    DeviceTypeRead(value="workstation", label="Workstation", icon="workstation", is_builtin=True),
+    DeviceTypeRead(value="database", label="Database", icon="database", is_builtin=True),
+    DeviceTypeRead(value="nas", label="NAS", icon="nas", is_builtin=True),
+    DeviceTypeRead(value="camera", label="Camera", icon="camera", is_builtin=True),
+    DeviceTypeRead(value="printer", label="Printer", icon="printer", is_builtin=True),
+    DeviceTypeRead(value="iot", label="IoT", icon="iot", is_builtin=True),
+    DeviceTypeRead(value="hypervisor", label="Hypervisor", icon="hypervisor", is_builtin=True),
+    DeviceTypeRead(value="phone", label="Phone", icon="phone", is_builtin=True),
+    DeviceTypeRead(value="vpn", label="VPN", icon="vpn", is_builtin=True),
+    DeviceTypeRead(value="cloud", label="Cloud", icon="cloud", is_builtin=True),
+    DeviceTypeRead(value="other", label="Other", icon="device", is_builtin=True),
+    DeviceTypeRead(value="unknown", label="Unknown", icon="unknown", is_builtin=True),
+)
+BUILT_IN_DEVICE_TYPE_VALUES = {row.value for row in BUILT_IN_DEVICE_TYPES}
+
 
 def _load(db: Session, defaults: dict[str, str]) -> dict[str, str]:
     rows = db.scalars(select(SystemSetting)).all()
@@ -91,6 +117,68 @@ def _save(db: Session, defaults: dict[str, str], updates: dict[str, str | None])
 
 def load_settings(db: Session) -> dict[str, str]:
     return _load(db, DEFAULTS)
+
+
+def _device_type_read(row: DeviceType) -> DeviceTypeRead:
+    return DeviceTypeRead(
+        id=row.id,
+        value=row.value,
+        label=row.label,
+        icon=row.icon or "device",
+        is_builtin=row.is_builtin,
+    )
+
+
+def _list_device_types(db: Session) -> list[DeviceTypeRead]:
+    custom = [_device_type_read(row) for row in db.scalars(select(DeviceType).order_by(DeviceType.label)).all()]
+    custom_by_value = {row.value: row for row in custom}
+    return [*BUILT_IN_DEVICE_TYPES, *[row for row in custom if row.value not in BUILT_IN_DEVICE_TYPE_VALUES and row.value in custom_by_value]]
+
+
+@router.get("/device-types", response_model=list[DeviceTypeRead])
+def list_device_types(
+    _current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> list[DeviceTypeRead]:
+    return _list_device_types(db)
+
+
+@router.post("/device-types", response_model=DeviceTypeRead, status_code=status.HTTP_201_CREATED)
+def create_device_type(
+    payload: DeviceTypeCreate,
+    _current_user: Annotated[User, Depends(require_super_admin)],
+    db: Annotated[Session, Depends(get_db)],
+) -> DeviceTypeRead:
+    value = payload.value or normalize_device_type_value(payload.label)
+    if value in BUILT_IN_DEVICE_TYPE_VALUES:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Device type already exists")
+    existing = db.scalar(select(DeviceType).where(DeviceType.value == value))
+    if existing:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Device type already exists")
+    row = DeviceType(value=value, label=payload.label, icon=payload.icon or "device", is_builtin=False)
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return _device_type_read(row)
+
+
+@router.delete("/device-types/{value}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_device_type(
+    value: str,
+    _current_user: Annotated[User, Depends(require_super_admin)],
+    db: Annotated[Session, Depends(get_db)],
+) -> None:
+    normalized = normalize_device_type_value(value)
+    if normalized in BUILT_IN_DEVICE_TYPE_VALUES:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Built-in device types cannot be deleted")
+    row = db.scalar(select(DeviceType).where(DeviceType.value == normalized))
+    if not row:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Device type not found")
+    in_use = db.scalar(select(Device.id).where(Device.device_type == normalized).limit(1))
+    if in_use is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Device type is in use")
+    db.delete(row)
+    db.commit()
 
 
 @router.get("/settings/public", response_model=SystemSettingsRead)
