@@ -1,0 +1,416 @@
+/* NetMap design-system additions: skeletons, toasts, confirm dialog, fault card, nm-table */
+
+/* Composed skeleton layouts (components/Skeleton.tsx) */
+.nm-skeleton-table {
+  border: 1px solid var(--nm-border);
+  border-radius: var(--nm-radius-md, 8px);
+  overflow: hidden;
+  background: var(--nm-surface);
+}
+
+.nm-skeleton-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid var(--nm-border);
+  border-radius: var(--nm-radius-md, 8px);
+  background: var(--nm-surface);
+}
+
+.nm-skeleton-workspace {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 4px 0;
+}
+
+.nm-skeleton-workspace-toolbar {
+  display: flex;
+  gap: 10px;
+}
+
+.nm-skeleton-workspace-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+}
+
+/* Toast notifications (components/Toast.tsx) */
+.nm-toast-stack {
+  position: fixed;
+  bottom: 18px;
+  right: 18px;
+  z-index: 2600;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: min(380px, calc(100vw - 36px));
+  pointer-events: none;
+}
+
+.nm-toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--nm-border-strong);
+  border-radius: var(--nm-radius-md, 8px);
+  background: var(--nm-bg-elevated);
+  color: var(--nm-text);
+  box-shadow: 0 8px 24px rgba(6, 16, 24, 0.22);
+  pointer-events: auto;
+  animation: nm-toast-in 0.18s ease-out;
+}
+
+.nm-toast--leaving {
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity 0.18s ease-in, transform 0.18s ease-in;
+}
+
+@keyframes nm-toast-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nm-toast { animation: none; }
+  .nm-toast--leaving { transition: none; }
+}
+
+.nm-toast-icon {
+  display: grid;
+  place-items: center;
+  margin-top: 1px;
+  flex-shrink: 0;
+}
+
+.nm-toast--success .nm-toast-icon { color: var(--nm-success); }
+.nm-toast--error .nm-toast-icon { color: var(--nm-danger); }
+.nm-toast--info .nm-toast-icon { color: var(--nm-accent); }
+
+.nm-toast--success { border-left: 3px solid var(--nm-success); }
+.nm-toast--error { border-left: 3px solid var(--nm-danger); }
+.nm-toast--info { border-left: 3px solid var(--nm-accent); }
+
+.nm-toast-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  font-size: var(--nm-text-sm, 12px);
+}
+
+.nm-toast-copy strong {
+  font-size: var(--nm-text-md, 13px);
+  font-weight: 600;
+}
+
+.nm-toast-copy span {
+  color: var(--nm-text-muted);
+  word-break: break-word;
+}
+
+.nm-toast-dismiss {
+  margin-left: auto;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: var(--nm-radius-sm, 6px);
+  background: transparent;
+  color: var(--nm-text-faint);
+  cursor: pointer;
+}
+
+.nm-toast-dismiss:hover {
+  background: var(--nm-accent-soft);
+  color: var(--nm-text);
+}
+
+/* Confirm dialog (components/ConfirmDialog.tsx) */
+.nm-confirm-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 18px 20px 20px;
+}
+
+.nm-confirm-icon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--nm-danger-soft);
+  color: var(--nm-danger);
+}
+
+.nm-confirm-message {
+  margin: 0;
+  font-size: var(--nm-text-md, 13px);
+  font-weight: 600;
+  color: var(--nm-text);
+}
+
+.nm-confirm-detail {
+  margin: 0;
+  font-size: var(--nm-text-sm, 12px);
+  color: var(--nm-text-muted);
+}
+
+.nm-confirm-gate span code {
+  font-size: var(--nm-text-sm, 12px);
+  background: var(--nm-surface-soft);
+  border: 1px solid var(--nm-border);
+  border-radius: var(--nm-radius-sm, 6px);
+  padding: 1px 5px;
+}
+
+.nm-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+/* Workspace fault card (components/ErrorBoundary.tsx) */
+.workspace-fault {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin: 40px auto;
+  max-width: 460px;
+  padding: 32px 28px;
+  text-align: center;
+}
+
+.workspace-fault-icon {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--nm-danger-soft);
+  color: var(--nm-danger);
+}
+
+.workspace-fault h3 {
+  margin: 4px 0 0;
+  font-size: var(--nm-text-lg, 14px);
+  color: var(--nm-text);
+}
+
+.workspace-fault-detail {
+  margin: 0;
+  font-size: var(--nm-text-sm, 12px);
+  color: var(--nm-danger);
+  word-break: break-word;
+}
+
+.workspace-fault-hint {
+  margin: 0 0 8px;
+  font-size: var(--nm-text-sm, 12px);
+  color: var(--nm-text-muted);
+}
+
+
+/* ── Standard data table (nm-table) ──────────────────────────────────────────
+   Canonical dense table: sticky header, token-driven borders/hover, stable
+   numeric columns. Wrap in .nm-table-wrap for scrolling + border. */
+.nm-table-wrap {
+  overflow: auto;
+  border: 1px solid var(--nm-border);
+  border-radius: var(--nm-radius-md);
+  background: var(--nm-surface);
+}
+
+.nm-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--nm-text-sm);
+  color: var(--nm-text);
+}
+
+.nm-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 7px 10px;
+  text-align: left;
+  font-size: var(--nm-text-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--nm-text-muted);
+  background: var(--nm-surface-soft);
+  border-bottom: 1px solid var(--nm-border-strong);
+  white-space: nowrap;
+}
+
+.nm-table tbody td {
+  padding: 6px 10px;
+  border-top: 1px solid var(--nm-border);
+  vertical-align: middle;
+}
+
+.nm-table tbody tr:first-child td { border-top: none; }
+
+.nm-table tbody tr:hover { background: var(--nm-accent-soft); }
+
+.nm-table--selectable tbody tr { cursor: pointer; }
+
+.nm-table .nm-table-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.nm-table .nm-table-mono {
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--nm-text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Sortable header button (hooks/useSortableData.ts) */
+.nm-table-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+  cursor: pointer;
+}
+
+.nm-table-sort:hover { color: var(--nm-accent-strong); }
+
+.nm-table-sort.is-active { color: var(--nm-accent-strong); }
+
+/* ── Layout stability ─────────────────────────────────────────────────────────
+   Live-updating numbers must not reflow their row: tabular numerals keep
+   digit widths constant; a stable scrollbar gutter stops page-width jumps. */
+html {
+  scrollbar-gutter: stable;
+}
+
+.mon-table td,
+.dash-stat-value,
+.dash-fav-rtt,
+.hb-tooltip-rtt,
+.uptime-badge,
+.nm-pill {
+  font-variant-numeric: tabular-nums;
+}
+
+.mon-table-body,
+.nm-table-wrap {
+  scrollbar-gutter: stable;
+}
+
+.auth-field-hint {
+  display: block;
+  font-size: var(--nm-text-xs);
+  color: var(--nm-text-faint);
+  margin: 2px 0 4px;
+}
+
+/* ── Canonical panel / toolbar / form-row / table-actions / pills ─────────────
+   Ported verbatim from dev/docs/design-system-preview.html (source of truth). */
+.nm-panel {
+  border: 1px solid var(--nm-border);
+  border-radius: var(--nm-radius-lg);
+  background: var(--nm-surface);
+  box-shadow: var(--nm-shadow-sm);
+  overflow: hidden;
+}
+
+.nm-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--nm-space-3);
+  padding: var(--nm-space-3) var(--nm-space-4);
+  border-bottom: 1px solid var(--nm-border);
+  background: var(--nm-surface-soft);
+}
+
+.nm-panel-title {
+  font-size: var(--nm-text-md);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--nm-text);
+}
+
+.nm-panel-meta {
+  font-size: var(--nm-text-sm);
+  color: var(--nm-text-faint);
+}
+
+.nm-panel-body {
+  padding: var(--nm-space-4);
+}
+
+.nm-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--nm-space-2);
+  padding: var(--nm-space-3) var(--nm-space-4);
+  border-bottom: 1px solid var(--nm-border);
+  background: var(--nm-surface-soft);
+}
+
+.nm-toolbar-divider {
+  width: 1px;
+  align-self: stretch;
+  margin: 4px 2px;
+  background: var(--nm-border);
+}
+
+.nm-form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--nm-space-3);
+}
+
+@media (max-width: 720px) {
+  .nm-form-row { grid-template-columns: 1fr; }
+}
+
+.nm-table-actions {
+  display: flex;
+  gap: var(--nm-space-1);
+}
+
+.nm-table-actions .nm-btn--sm {
+  flex: 1;
+  min-width: 0;
+}
+
+.nm-pill--online {
+  background: var(--nm-success-soft);
+  color: var(--nm-success);
+  border-color: rgba(34, 160, 107, 0.25);
+}
+
+.nm-pill--offline {
+  background: var(--nm-danger-soft);
+  color: var(--nm-danger);
+  border-color: rgba(217, 75, 75, 0.25);
+}
+
+.nm-pill--warning {
+  background: var(--nm-warning-soft);
+  color: var(--nm-warning);
+  border-color: rgba(212, 145, 44, 0.25);
+}
