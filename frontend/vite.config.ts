@@ -2,10 +2,10 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { visualizer } from "rollup-plugin-visualizer";
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   plugins: [
     react(),
-    visualizer({ filename: "dist/stats.html", gzipSize: true, open: false }),
+    mode === "analyze" && visualizer({ filename: "dist/stats.html", gzipSize: true, open: false }),
   ],
   build: {
     chunkSizeWarningLimit: 600,
@@ -20,4 +20,4 @@ export default defineConfig({
       },
     },
   },
-});
+}));

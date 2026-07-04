@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "node node_modules/vite/bin/vite.js --host 0.0.0.0",
     "build": "tsc && vite build",
-    "analyze": "vite build && xdg-open dist/stats.html 2>/dev/null || open dist/stats.html 2>/dev/null || true",
+    "analyze": "vite build --mode analyze && xdg-open dist/stats.html 2>/dev/null || open dist/stats.html 2>/dev/null || true",
     "preview": "vite preview --host 0.0.0.0",
     "import-icon-pack": "node ./scripts/import-icon-pack.mjs",
     "test:e2e": "playwright test",
