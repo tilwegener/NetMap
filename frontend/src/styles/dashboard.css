@@ -2,9 +2,9 @@
 /* ── Dashboard (Overview) ── */
 :root {
   --dash-green: #2dba7c;
-  --dash-red: #e05050;
+  --dash-red: var(--nm-danger);
   --dash-amber: #e09030;
-  --dash-teal: #1d9ab0;
+  --dash-teal: var(--nm-accent);
   --dash-purple: #7c5cbf;
   --dash-blue: #3b80d0;
   --dash-indigo: #5060c0;
@@ -78,27 +78,27 @@
 
 /* ── Light-mode table headers ─────────────────────────────────────────────── */
 body:not(.theme-dark) .mon-table th {
-  background: #edf3f7;
+  background: var(--nm-shell-text);
   color: #4e6e82;
   border-bottom-color: rgba(170, 200, 218, 0.7);
 }
 body:not(.theme-dark) .inventory-table-header {
-  background: #edf3f7;
+  background: var(--nm-shell-text);
   color: #4e6e82;
   border-bottom-color: rgba(170, 200, 218, 0.7);
 }
 body:not(.theme-dark) .inventory-sort-btn       { color: #4e6e82; }
 body:not(.theme-dark) .inventory-sort-btn:hover,
-body:not(.theme-dark) .inventory-sort-btn.active { color: #1d6472; }
+body:not(.theme-dark) .inventory-sort-btn.active { color: var(--nm-accent-strong); }
 
 /* ── Light-mode panel headers ────────────────────────────────────────────── */
 body:not(.theme-dark) .dash-panel-header {
-  background: #e8f0f6;
+  background: var(--nm-shell-text);
   border-bottom-color: rgba(145, 174, 196, 0.72);
 }
 body:not(.theme-dark) .dash-panel-title  { color: #2a4860; }
 body:not(.theme-dark) .dash-panel-meta   { color: #5a7a8a; }
-body:not(.theme-dark) .dash-panel-link   { color: #1d6472; }
+body:not(.theme-dark) .dash-panel-link   { color: var(--nm-accent-strong); }
 body:not(.theme-dark) .dash-panel-link:hover { color: #155060; }
 
 body:not(.theme-dark) .dash-panel,
@@ -236,7 +236,7 @@ body.theme-dark .inv-stat-chip--muted { color: #7a9aaa; border-color: rgba(122,1
   font-size: 30px;
   font-weight: 800;
   line-height: 1;
-  color: #111e2a;
+  color: var(--nm-shell);
   letter-spacing: -0.03em;
 }
 
@@ -305,7 +305,7 @@ body.theme-dark .inv-stat-chip--muted { color: #7a9aaa; border-color: rgba(122,1
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #e05050;
+  background: var(--nm-danger);
   flex-shrink: 0;
   animation: pulse-dot 1.8s ease-in-out infinite;
 }
@@ -444,7 +444,7 @@ body.theme-dark .inv-stat-chip--muted { color: #7a9aaa; border-color: rgba(122,1
 body.theme-dark .inv-filter-bar { background: rgba(10, 20, 30, 0.6); border-bottom-color: rgba(40, 70, 90, 0.5); }
 body.theme-dark .inv-filter-label { color: #304a5e; }
 body.theme-dark .inv-filter-sep { background: rgba(40, 70, 90, 0.6); }
-body.theme-dark .inv-filter-tab { color: #4e6a7a; }
+body.theme-dark .inv-filter-tab { color: var(--nm-text-muted); }
 body.theme-dark .inv-filter-tab:hover { background: rgba(29, 154, 176, 0.1); color: #4db8cc; border-color: rgba(29, 154, 176, 0.2); }
 body.theme-dark .inv-filter-tab.active { background: rgba(29, 154, 176, 0.15); border-color: rgba(29, 154, 176, 0.3); color: #40d4ea; }
 body.theme-dark .dash-alert-tag { background: rgba(224,80,80,0.12); border-color: rgba(224,80,80,0.2); color: #e07070; }
@@ -542,7 +542,7 @@ body.theme-dark .dash-alert-tag--more { background: rgba(140,160,180,0.07); bord
   font-size: 12px;
 }
 
-.overview-fav-search input::placeholder { color: #8aa0b0; }
+.overview-fav-search input::placeholder { color: var(--nm-text-faint); }
 
 .dash-panel-header--favourites {
   padding-top: 10px;
@@ -750,7 +750,7 @@ body.theme-dark .dash-alert-tag--more { background: rgba(140,160,180,0.07); bord
 }
 
 .dash-device-row:last-child { border-bottom: none; }
-.dash-device-row:hover { background: #f5f7f9; }
+.dash-device-row:hover { background: var(--nm-row-hover); }
 .dash-device-row--action {
   cursor: pointer;
 }
@@ -920,7 +920,7 @@ body.theme-dark .dash-alert-tag--more { background: rgba(140,160,180,0.07); bord
   width: 100%;
 }
 
-.dash-nav-btn:hover { background: #e5ecf3; }
+.dash-nav-btn:hover { background: var(--nm-shell-text); }
 .dash-nav-btn:hover .dash-nav-btn-arrow { color: var(--nm-accent); transform: translateX(2px); }
 
 .dash-nav-btn-icon {
@@ -991,7 +991,7 @@ body.theme-dark .dash-alert-tag--more { background: rgba(140,160,180,0.07); bord
   width: 36px;
   height: 36px;
   border-radius: 9px;
-  background: linear-gradient(135deg, #e2f4f7 0%, #c4e8f0 100%);
+  background: linear-gradient(135deg, var(--nm-surface-soft) 0%, #c4e8f0 100%);
   color: var(--nm-accent-strong);
   font-size: 18px;
   line-height: 1;

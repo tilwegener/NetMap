@@ -10,7 +10,7 @@
   display: none;
   width: 42%;
   flex-shrink: 0;
-  background: linear-gradient(155deg, #0f2032 0%, #091728 55%, #071020 100%);
+  background: linear-gradient(155deg, var(--nm-shell) 0%, var(--nm-shell) 55%, var(--nm-shell-raised) 100%);
   position: relative;
   overflow: hidden;
   align-items: center;
@@ -273,7 +273,7 @@
   height: 18px;
   padding: 0 5px;
   border-radius: 9px;
-  background: #e05050;
+  background: var(--nm-danger);
   color: #fff;
   font-size: 10px;
   font-weight: 700;
@@ -724,7 +724,7 @@ body.route-locations .topology-content {
   font-size: 28px;
   font-weight: 750;
   letter-spacing: -0.02em;
-  color: #111e2a;
+  color: var(--nm-shell);
 }
 
 .auth-card h1 {
@@ -764,7 +764,7 @@ body.route-locations .topology-content {
 .auth-brand-name {
   font-size: 22px;
   font-weight: 800;
-  color: #0f1e2a;
+  color: var(--nm-shell);
   letter-spacing: -0.02em;
   line-height: 1;
 }
@@ -815,7 +815,7 @@ body.route-locations .topology-content {
 }
 
 .auth-theme-toggle:hover {
-  background: #e5ecf3;
+  background: var(--nm-shell-text);
   border-color: rgba(100, 130, 155, 0.55);
 }
 
@@ -826,7 +826,7 @@ body.route-locations .topology-content {
   margin-bottom: 18px;
   place-items: center;
   border-radius: 12px;
-  background: linear-gradient(135deg, #e2f4f7 0%, #c4e8f0 100%);
+  background: linear-gradient(135deg, var(--nm-surface-soft) 0%, #c4e8f0 100%);
   color: var(--nm-accent-strong);
 }
 
@@ -872,7 +872,7 @@ body.route-locations .topology-content {
   border-radius: 10px;
   padding: 11px 18px;
   color: #ffffff;
-  background: linear-gradient(135deg, #0d454b 0%, #1a8fa4 50%, #125b63 100%);
+  background: linear-gradient(135deg, #0d454b 0%, var(--nm-accent) 50%, #125b63 100%);
   font-size: 15px;
   font-weight: 700;
   cursor: pointer;
@@ -954,7 +954,7 @@ body.route-locations .topology-content {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #e05050;
+  background: var(--nm-danger);
 }
 
 .success-banner::before {
