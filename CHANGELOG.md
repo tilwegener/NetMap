@@ -41,6 +41,7 @@
 - **Unified near-duplicate UI colours onto the design-token palette** — 485 hard-coded colour values that were visually near-identical to an existing theme token now use the token, keeping light and dark mode consistent as the palette evolves. The changes are imperceptible by design and were verified against light/dark screenshot baselines of every workspace.
 
 ### Fixed
+- **Monitoring drilldown popup surface** — the device drilldown modal now uses the standard app surface colours again instead of the stronger blue-toned background.
 - **Monitoring/IPAM table formatting regression** — shared numeric-stability styling no longer turns Monitoring and IPAM table cells into pill-shaped inline elements, restoring normal table layout and dashboard card values.
 - **Monitoring status-dot motion** — Monitoring and port-check status dots now use a slower, softer pulse so live state remains visible without drawing as much attention.
 - **Device saves now confirm completion** — saving device edits now shows a success toast with the device name, so the details panel no longer feels like the Save action did nothing.
