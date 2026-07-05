@@ -62,7 +62,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
   const toast = useCallback((variant: ToastVariant, message: string, options?: ToastOptions) => {
     const id = nextIdRef.current++;
-    const durationMs = options?.durationMs ?? (variant === "error" ? 8000 : 4000);
+    const durationMs = options?.durationMs ?? (variant === "error" ? 8000 : 5500);
     setToasts((current) => [...current.slice(-4), { id, variant, message, detail: options?.detail, leaving: false }]);
     timersRef.current.set(id, window.setTimeout(() => dismiss(id), durationMs));
   }, [dismiss]);
@@ -86,13 +86,13 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               className={`nm-toast nm-toast--${entry.variant}${entry.leaving ? " nm-toast--leaving" : ""}`}
               role={entry.variant === "error" ? "alert" : "status"}
             >
-              <span className="nm-toast-icon" aria-hidden="true"><Icon size={16} /></span>
+              <span className="nm-toast-icon" aria-hidden="true"><Icon size={20} /></span>
               <div className="nm-toast-copy">
                 <strong>{entry.message}</strong>
                 {entry.detail && <span>{entry.detail}</span>}
               </div>
               <button type="button" className="nm-toast-dismiss" onClick={() => dismiss(entry.id)} aria-label="Dismiss notification">
-                <X size={14} />
+                <X size={16} />
               </button>
             </div>
           );

@@ -183,8 +183,16 @@
   margin-top: 12px;
 }
 
+.sidebar-footer-actions {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  margin-top: auto;
+}
+
 .sidebar-theme-toggle,
-.sidebar-logout {
+.sidebar-logout,
+.sidebar-collapse-btn--footer {
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -201,16 +209,13 @@
   transition: border-color 0.15s, color 0.15s;
 }
 
-.sidebar-theme-toggle {
-  margin-top: auto;
-}
-
 .sidebar-logout {
-  margin-top: 6px;
+  margin-top: 0;
 }
 
 .sidebar-theme-toggle:hover,
-.sidebar-logout:hover {
+.sidebar-logout:hover,
+.sidebar-collapse-btn--footer:hover {
   border-color: rgba(255, 255, 255, 0.15);
   color: var(--nm-shell-text);
   background: rgba(255, 255, 255, 0.055);
@@ -898,6 +903,44 @@ body.route-locations .topology-content {
   opacity: 0.72;
 }
 
+.auth-card button.auth-sso-btn {
+  margin-top: 14px;
+  color: #274355;
+  background: #eef4f8;
+  border: 1.5px solid #c6d4df;
+  box-shadow: none;
+  font-weight: 600;
+}
+
+.auth-card button.auth-sso-btn:hover {
+  opacity: 1;
+  background: var(--nm-accent-soft);
+  border-color: rgba(29, 154, 176, 0.4);
+  color: var(--nm-accent-strong);
+  box-shadow: none;
+  transform: none;
+}
+
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 20px;
+  color: #8a97a7;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: #d5dee6;
+}
+
 .auth-card .auth-forgot-link {
   display: block;
   width: 100%;
@@ -937,8 +980,7 @@ body.route-locations .topology-content {
 }
 
 .error-banner,
-.form-error,
-.success-banner {
+.form-error {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -957,15 +999,6 @@ body.route-locations .topology-content {
   background: var(--nm-danger);
 }
 
-.success-banner::before {
-  content: "";
-  flex-shrink: 0;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #2dba7c;
-}
-
 .error-banner {
   margin-bottom: 16px;
   padding: 10px 14px;
@@ -980,12 +1013,4 @@ body.route-locations .topology-content {
   background: rgba(224, 80, 80, 0.07);
   border: 1px solid rgba(224, 80, 80, 0.25);
   color: #7a1a1a;
-}
-
-.success-banner {
-  margin: 12px 0 14px;
-  padding: 9px 14px 9px 12px;
-  background: rgba(45, 186, 124, 0.07);
-  border: 1px solid rgba(45, 186, 124, 0.28);
-  color: #1a5c3d;
 }

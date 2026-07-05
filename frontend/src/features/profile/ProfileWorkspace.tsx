@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { api, type User } from "../../api/client";
+import { useToast } from "../../components/Toast";
 
 export function ProfileWorkspace({
   accessToken,
@@ -10,18 +11,17 @@ export function ProfileWorkspace({
   user: User;
   onUserUpdate: (user: User) => void;
 }) {
+  const toast = useToast();
   const [displayName, setDisplayName] = useState(user.display_name ?? "");
   const [profileEmail, setProfileEmail] = useState(user.email ?? "");
   const [avatarPreview, setAvatarPreview] = useState<string | null>(user.avatar_data ?? null);
   const [profileBusy, setProfileBusy] = useState(false);
-  const [profileSuccess, setProfileSuccess] = useState(false);
   const [profileError, setProfileError] = useState<string | null>(null);
 
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [pwBusy, setPwBusy] = useState(false);
-  const [pwSuccess, setPwSuccess] = useState(false);
   const [pwError, setPwError] = useState<string | null>(null);
 
   function handleAvatarFile(file: File) {
@@ -46,7 +46,6 @@ export function ProfileWorkspace({
     event.preventDefault();
     setProfileBusy(true);
     setProfileError(null);
-    setProfileSuccess(false);
     try {
       const updated = await api.updateProfile(accessToken, {
         display_name: displayName.trim() || null,
@@ -54,8 +53,7 @@ export function ProfileWorkspace({
         email: profileEmail.trim() || null,
       });
       onUserUpdate(updated);
-      setProfileSuccess(true);
-      setTimeout(() => setProfileSuccess(false), 3000);
+      toast.success("Profile saved");
     } catch (err) {
       setProfileError(err instanceof Error ? err.message : "Failed to save profile");
     } finally {
@@ -71,14 +69,12 @@ export function ProfileWorkspace({
     }
     setPwBusy(true);
     setPwError(null);
-    setPwSuccess(false);
     try {
       await api.changePassword(accessToken, currentPassword, newPassword);
-      setPwSuccess(true);
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
-      setTimeout(() => setPwSuccess(false), 3000);
+      toast.success("Password changed successfully");
     } catch (err) {
       setPwError(err instanceof Error ? err.message : "Failed to change password");
     } finally {
@@ -153,7 +149,6 @@ export function ProfileWorkspace({
             </label>
 
             {profileError && <div className="form-error">{profileError}</div>}
-            {profileSuccess && <div className="success-banner">Profile saved.</div>}
 
             <div className="profile-form-actions">
               <button type="submit" className="nm-btn nm-btn--primary" disabled={profileBusy}>
@@ -204,7 +199,6 @@ export function ProfileWorkspace({
             </label>
 
             {pwError && <div className="form-error">{pwError}</div>}
-            {pwSuccess && <div className="success-banner">Password changed successfully.</div>}
 
             <div className="profile-form-actions">
               <button type="submit" className="nm-btn nm-btn--primary" disabled={pwBusy}>

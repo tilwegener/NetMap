@@ -39,26 +39,27 @@
 /* Toast notifications (components/Toast.tsx) */
 .nm-toast-stack {
   position: fixed;
-  bottom: 18px;
-  right: 18px;
+  top: 22px;
+  right: 22px;
   z-index: 2600;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  max-width: min(380px, calc(100vw - 36px));
+  gap: 10px;
+  width: min(460px, calc(100vw - 44px));
   pointer-events: none;
 }
 
 .nm-toast {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
-  padding: 10px 12px;
+  gap: 13px;
+  min-height: 68px;
+  padding: 14px 15px;
   border: 1px solid var(--nm-border-strong);
   border-radius: var(--nm-radius-md, 8px);
   background: var(--nm-bg-elevated);
   color: var(--nm-text);
-  box-shadow: 0 8px 24px rgba(6, 16, 24, 0.22);
+  box-shadow: 0 14px 38px rgba(6, 16, 24, 0.24);
   pointer-events: auto;
   animation: nm-toast-in 0.18s ease-out;
 }
@@ -82,7 +83,11 @@
 .nm-toast-icon {
   display: grid;
   place-items: center;
-  margin-top: 1px;
+  width: 28px;
+  height: 28px;
+  margin-top: -1px;
+  border-radius: 999px;
+  background: var(--nm-accent-soft);
   flex-shrink: 0;
 }
 
@@ -90,21 +95,22 @@
 .nm-toast--error .nm-toast-icon { color: var(--nm-danger); }
 .nm-toast--info .nm-toast-icon { color: var(--nm-accent); }
 
-.nm-toast--success { border-left: 3px solid var(--nm-success); }
-.nm-toast--error { border-left: 3px solid var(--nm-danger); }
-.nm-toast--info { border-left: 3px solid var(--nm-accent); }
+.nm-toast--success { border-left: 4px solid var(--nm-success); }
+.nm-toast--error { border-left: 4px solid var(--nm-danger); }
+.nm-toast--info { border-left: 4px solid var(--nm-accent); }
 
 .nm-toast-copy {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
   min-width: 0;
-  font-size: var(--nm-text-sm, 12px);
+  font-size: var(--nm-text-md, 13px);
+  line-height: 1.45;
 }
 
 .nm-toast-copy strong {
-  font-size: var(--nm-text-md, 13px);
-  font-weight: 600;
+  font-size: 14px;
+  font-weight: 700;
 }
 
 .nm-toast-copy span {
@@ -117,8 +123,8 @@
   flex-shrink: 0;
   display: grid;
   place-items: center;
-  width: 22px;
-  height: 22px;
+  width: 28px;
+  height: 28px;
   padding: 0;
   border: none;
   border-radius: var(--nm-radius-sm, 6px);
@@ -336,13 +342,78 @@ html {
   scrollbar-gutter: stable;
 }
 
-.mon-table td,
 .dash-stat-value,
 .dash-fav-rtt,
 .hb-tooltip-rtt,
+.mon-cell-mono {
+  font-variant-numeric: tabular-nums;
+}
+
 .uptime-badge,
 .nm-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: var(--nm-text-xs);
+  font-weight: 700;
+  border: 1px solid transparent;
   font-variant-numeric: tabular-nums;
+}
+
+/* Auth-source badge (Admin -> Users): linked single sign-on identity. */
+.nm-pill--sso {
+  background: var(--nm-accent-soft);
+  color: var(--nm-accent-strong);
+  border-color: rgba(29, 154, 176, 0.25);
+}
+
+.admin-user-name .nm-pill--sso {
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+/* ── SSO provider test results (Admin -> Security) ──────────────────────── */
+.sso-check-list {
+  display: grid;
+  gap: var(--nm-space-1);
+  margin: var(--nm-space-2) 0;
+}
+
+.sso-check-row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--nm-space-2);
+  padding: 6px 10px;
+  border-radius: var(--nm-radius-sm);
+  border: 1px solid var(--nm-border);
+  background: var(--nm-surface-soft);
+  font-size: var(--nm-text-sm);
+  color: var(--nm-text);
+}
+
+.sso-check-row.ok .sso-check-status { color: var(--nm-success); }
+.sso-check-row.err {
+  border-color: rgba(217, 75, 75, 0.25);
+  background: var(--nm-danger-soft);
+}
+.sso-check-row.err .sso-check-status { color: var(--nm-danger); }
+
+.sso-check-status { font-weight: 700; }
+
+.sso-check-name {
+  min-width: 110px;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+.sso-check-message { color: var(--nm-text-muted); }
+
+.sso-require-block {
+  margin-top: var(--nm-space-3);
+  padding-top: var(--nm-space-3);
+  border-top: 1px solid var(--nm-border);
 }
 
 .mon-table-body,

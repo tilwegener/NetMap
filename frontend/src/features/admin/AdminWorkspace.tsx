@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { Settings, Shield } from "lucide-react";
 import {
   IconUsers, IconShieldCheck, IconCloud, IconAlertCircle,
@@ -10,6 +10,7 @@ import {
   type DashboardSummary, type TopologyGraph,
 } from "../../api/client";
 import { useApiQuery } from "../../hooks/useApiQuery";
+import { useToast } from "../../components/Toast";
 
 import { SystemTab } from "./tabs/SystemTab";
 import { UsersTab } from "./tabs/UsersTab";
@@ -52,7 +53,7 @@ export function AdminWorkspace({
 }) {
   const [activeTab, setActiveTab] = useState<AdminTabId>("system");
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
+  const toast = useToast();
   // Set when the Users tab jumps to Security with a per-user audit filter;
   // cleared on any direct tab-bar navigation.
   const [auditFocusUserId, setAuditFocusUserId] = useState<number | null>(null);
@@ -64,6 +65,10 @@ export function AdminWorkspace({
     setAuditFocusUserId(userId);
     setActiveTab("security");
   }
+
+  const showSuccess = useCallback((message: string | null) => {
+    if (message) toast.success(message);
+  }, [toast]);
 
   return (
     <section className="admin-layout">
@@ -82,7 +87,6 @@ export function AdminWorkspace({
       </div>
 
       {error && <div className="form-error">{error}</div>}
-      {success && <div className="success-banner">{success}</div>}
       {usersQuery.error && <div className="form-error">{usersQuery.error}</div>}
 
       {activeTab === "system" && (
@@ -95,7 +99,7 @@ export function AdminWorkspace({
           onOpenWhatsNew={onOpenWhatsNew}
           onSettingsChange={onSettingsChange}
           onError={setError}
-          onSuccess={setSuccess}
+          onSuccess={showSuccess}
         />
       )}
       {activeTab === "users" && (
@@ -107,11 +111,11 @@ export function AdminWorkspace({
           onReloadUsers={() => void usersQuery.reload()}
           onShowUserAudit={showUserAudit}
           onError={setError}
-          onSuccess={setSuccess}
+          onSuccess={showSuccess}
         />
       )}
       {activeTab === "devices-icons" && (
-        <DeviceIconsTab accessToken={accessToken} onError={setError} onSuccess={setSuccess} />
+        <DeviceIconsTab accessToken={accessToken} onError={setError} onSuccess={showSuccess} />
       )}
       {activeTab === "security" && (
         <SecurityTab
@@ -121,19 +125,19 @@ export function AdminWorkspace({
         />
       )}
       {activeTab === "notifications" && (
-        <NotificationsTab accessToken={accessToken} onError={setError} onSuccess={setSuccess} />
+        <NotificationsTab accessToken={accessToken} onError={setError} onSuccess={showSuccess} />
       )}
       {activeTab === "alerts" && (
         <AlertsTab accessToken={accessToken} graph={graph} />
       )}
       {activeTab === "groups" && (
-        <GroupsTab accessToken={accessToken} onError={setError} onSuccess={setSuccess} />
+        <GroupsTab accessToken={accessToken} onError={setError} onSuccess={showSuccess} />
       )}
       {activeTab === "credentials" && (
-        <CredentialsTab accessToken={accessToken} onError={setError} onSuccess={setSuccess} />
+        <CredentialsTab accessToken={accessToken} onError={setError} onSuccess={showSuccess} />
       )}
       {activeTab === "automation" && (
-        <AutomationTab accessToken={accessToken} onError={setError} onSuccess={setSuccess} />
+        <AutomationTab accessToken={accessToken} onError={setError} onSuccess={showSuccess} />
       )}
     </section>
   );

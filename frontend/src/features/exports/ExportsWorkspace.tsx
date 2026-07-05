@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { api, type DownloadResult, type User } from "../../api/client";
+import { useToast } from "../../components/Toast";
 import { triggerDownload } from "../../utils/download";
 
 export function ExportsWorkspace({
@@ -9,6 +10,7 @@ export function ExportsWorkspace({
   accessToken: string;
   user: User;
 }) {
+  const toast = useToast();
   const canExportInventory = user.role === "SuperAdmin" || user.role === "NetworkAdmin";
   const canExportFirewall =
     user.role === "SuperAdmin" || user.role === "NetworkAdmin" || user.role === "SecurityAnalyst";
@@ -24,17 +26,15 @@ export function ExportsWorkspace({
     limit: "5000",
   });
   const [busyKey, setBusyKey] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function runDownload(key: string, action: () => Promise<DownloadResult>) {
     setBusyKey(key);
     setError(null);
-    setMessage(null);
     try {
       const result = await action();
       triggerDownload(result);
-      setMessage(`Downloaded ${result.filename}`);
+      toast.success(`Downloaded ${result.filename}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Download failed");
     } finally {
@@ -45,7 +45,6 @@ export function ExportsWorkspace({
   return (
     <section className="exports-layout">
       {error && <div className="form-error">{error}</div>}
-      {message && <div className="success-banner">{message}</div>}
       <div className="tools-grid exports-grid">
 
         <div className="dash-panel">
