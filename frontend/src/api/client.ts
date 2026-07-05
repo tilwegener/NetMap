@@ -27,6 +27,14 @@ export type DeviceIcon = string;
 
 export type DeviceLifecycle = "planned" | "active" | "retired" | "ignored";
 
+export type DeviceTypeOption = {
+  id: number | null;
+  value: string;
+  label: string;
+  icon: string;
+  is_builtin: boolean;
+};
+
 export type Device = {
   id: number;
   display_name: string | null;
@@ -1492,6 +1500,22 @@ export const api = {
     request<void>(`/api/v1/admin/notification-profiles/${id}`, { method: "DELETE", token }),
   testNotificationProfile: (token: string, id: number) =>
     request<{ status: string }>(`/api/v1/admin/notification-profiles/${id}/test`, { method: "POST", token }),
+  listDeviceTypes: (token: string) =>
+    request<DeviceTypeOption[]>("/api/v1/admin/device-types", { token }),
+  createDeviceType: (token: string, payload: { label: string; value?: string | null; icon?: string }) =>
+    request<DeviceTypeOption>("/api/v1/admin/device-types", {
+      method: "POST",
+      token,
+      body: JSON.stringify(payload),
+    }),
+  updateDeviceType: (token: string, value: string, payload: { label?: string; value?: string | null; icon?: string }) =>
+    request<DeviceTypeOption>(`/api/v1/admin/device-types/${encodeURIComponent(value)}`, {
+      method: "PUT",
+      token,
+      body: JSON.stringify(payload),
+    }),
+  deleteDeviceType: (token: string, value: string) =>
+    request<void>(`/api/v1/admin/device-types/${encodeURIComponent(value)}`, { method: "DELETE", token }),
   listAlertRules: (token: string) =>
     request<AlertRule[]>("/api/v1/alerts/rules", { token }),
   createAlertRule: (token: string, payload: AlertRulePayload) =>

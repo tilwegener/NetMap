@@ -163,6 +163,7 @@ def create_device_type(
     return _device_type_read(row)
 
 
+@router.put("/device-types/{value}", response_model=DeviceTypeRead)
 @router.patch("/device-types/{value}", response_model=DeviceTypeRead)
 def update_device_type(
     value: str,
