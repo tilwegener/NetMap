@@ -39,6 +39,7 @@ export function Modal({
   onCancel,
   size = "md",
   title,
+  titleIcon,
   wide = false,
 }: {
   bodyClassName?: string;
@@ -53,6 +54,7 @@ export function Modal({
   onCancel: () => void;
   size?: ModalSize;
   title: string;
+  titleIcon?: React.ReactNode;
   wide?: boolean;
 }) {
   const dialogRef = useRef<HTMLDivElement | null>(null);
@@ -124,6 +126,7 @@ export function Modal({
       >
         <div className="modal-header">
           <div className="modal-header-title-wrap">
+            {titleIcon}
             <h3>{title}</h3>
             {headerExtra}
           </div>

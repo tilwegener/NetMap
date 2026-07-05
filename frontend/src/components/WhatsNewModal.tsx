@@ -82,13 +82,13 @@ export function WhatsNewModal({
       size={hasHighlights ? "md" : "sm"}
       footer={(
         <>
-          <button type="button" className="nm-btn" onClick={onClose}>
-            Got it
-          </button>
-          <a className="nm-btn nm-btn--primary" href={releaseUrl} target="_blank" rel="noreferrer">
+          <a className="nm-btn nm-btn--secondary" href={releaseUrl} target="_blank" rel="noreferrer">
             <ExternalLink size={14} aria-hidden="true" />
             Release notes
           </a>
+          <button type="button" className="nm-btn nm-btn--primary" onClick={onClose}>
+            Got it
+          </button>
         </>
       )}
     >

@@ -71,15 +71,24 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
     <ConfirmCtx.Provider value={confirm}>
       {children}
       {options && (
-        <Modal size="sm" title={options.title} onCancel={() => settle(false)} modalClassName="nm-confirm-modal">
+        <Modal
+          size="sm"
+          title={options.title}
+          onCancel={() => settle(false)}
+          modalClassName="nm-confirm-modal"
+          titleIcon={danger ? (
+            <span className="nm-confirm-title-icon" aria-hidden="true">
+              <TriangleAlert size={18} />
+            </span>
+          ) : undefined}
+        >
           <form className="nm-confirm-body" onSubmit={onSubmit}>
-            {danger && (
-              <div className="nm-confirm-icon" aria-hidden="true">
-                <TriangleAlert size={22} />
+            <div className="nm-confirm-message-row">
+              <div className="nm-confirm-copy">
+                <p className="nm-confirm-message">{options.message}</p>
+                {options.detail && <p className="nm-confirm-detail">{options.detail}</p>}
               </div>
-            )}
-            <p className="nm-confirm-message">{options.message}</p>
-            {options.detail && <p className="nm-confirm-detail">{options.detail}</p>}
+            </div>
             {typeGate && (
               <label className="nm-field nm-confirm-gate">
                 <span>Type <code>{typeGate}</code> to confirm</span>
