@@ -30,7 +30,19 @@ import { HeartbeatBar, HeartbeatTimeline } from "../../components/HeartbeatBar";
 import { DeviceForm } from "../devices/DeviceForm";
 import { DiscoveryModal } from "../topology/DiscoveryModal";
 import { computeIncidents } from "../../utils/monitoring";
+import { readJson, writeJson } from "../../utils/storage";
 import { useApiQuery, useApiMutation } from "../../hooks/useApiQuery";
+import { useDeviceTypes } from "../../hooks/useDeviceTypes";
+
+type OverviewFavouriteSnapshot = {
+  updatedAt: string;
+  devices: DeviceMonitorSummary[];
+};
+
+function readFavouriteSnapshot(key: string): DeviceMonitorSummary[] {
+  const snapshot = readJson<OverviewFavouriteSnapshot>(key);
+  return Array.isArray(snapshot?.devices) ? snapshot.devices : [];
+}
 
 export function OverviewWorkspace({
   accessToken,
@@ -59,6 +71,8 @@ export function OverviewWorkspace({
   summary: DashboardSummary | null;
   user: User;
 }) {
+  const deviceTypesQuery = useDeviceTypes(accessToken);
+  const deviceTypeOptions = deviceTypesQuery.options;
   const monQuery = useApiQuery(
     accessToken
       ? async () => {
@@ -74,6 +88,7 @@ export function OverviewWorkspace({
   const monFleet = monQuery.data?.fleet ?? null;
   const monDevices = useMemo(() => monQuery.data?.devices ?? [], [monQuery.data]);
   const monLoading = monQuery.isLoading;
+  const favouriteSnapshotKey = `netmap.overview.favourites.${user.id}`;
 
   const formOptionsQuery = useApiQuery(
     accessToken && canWrite
@@ -102,6 +117,9 @@ export function OverviewWorkspace({
   const [favouriteHistoryLoading, setFavouriteHistoryLoading] = useState(false);
   const [favouriteAnalysis, setFavouriteAnalysis] = useState<DeviceAnalysis | null>(null);
   const [favouriteAlertEvents, setFavouriteAlertEvents] = useState<AlertEvent[]>([]);
+  const [cachedFavouriteDevices, setCachedFavouriteDevices] = useState<DeviceMonitorSummary[]>(
+    () => readFavouriteSnapshot(favouriteSnapshotKey),
+  );
 
   const createDevice = useApiMutation(
     (payload: DevicePayload) => api.createDevice(accessToken!, payload),
@@ -184,9 +202,25 @@ export function OverviewWorkspace({
     return m;
   }, [graph.devices]);
 
+  useEffect(() => {
+    setCachedFavouriteDevices(readFavouriteSnapshot(favouriteSnapshotKey));
+  }, [favouriteSnapshotKey]);
+
+  useEffect(() => {
+    if (monDevices.length === 0) return;
+    const nextFavouriteDevices = monDevices.filter((d) => favouriteIds.has(d.device_id));
+    setCachedFavouriteDevices(nextFavouriteDevices);
+    writeJson(favouriteSnapshotKey, {
+      updatedAt: new Date().toISOString(),
+      devices: nextFavouriteDevices,
+    } satisfies OverviewFavouriteSnapshot);
+  }, [favouriteIds, favouriteSnapshotKey, monDevices]);
+
+  const favouriteSourceDevices = monDevices.length > 0 ? monDevices : cachedFavouriteDevices;
+
   const favouriteDevices = useMemo(
-    () => monDevices.filter((d) => favouriteIds.has(d.device_id)),
-    [monDevices, favouriteIds],
+    () => favouriteSourceDevices.filter((d) => favouriteIds.has(d.device_id)),
+    [favouriteSourceDevices, favouriteIds],
   );
 
   const visibleFavouriteDevices = useMemo(() => {
@@ -201,8 +235,8 @@ export function OverviewWorkspace({
   }, [favouriteDevices, favouriteSearch]);
 
   const selectedFavouriteDevice = useMemo(
-    () => monDevices.find((d) => d.device_id === selectedFavouriteId) ?? null,
-    [monDevices, selectedFavouriteId],
+    () => favouriteSourceDevices.find((d) => d.device_id === selectedFavouriteId) ?? null,
+    [favouriteSourceDevices, selectedFavouriteId],
   );
 
   useEffect(() => {
@@ -499,7 +533,7 @@ export function OverviewWorkspace({
             </div>
           </div>
           <div className="dash-panel-body">
-            {monLoading ? (
+            {monLoading && favouriteDevices.length === 0 ? (
               <div className="dash-device-list">
                 {[1, 2, 3].map((n) => (
                   <div key={n} className="dash-device-row" style={{ gap: 10 }}>
@@ -512,7 +546,7 @@ export function OverviewWorkspace({
                   </div>
                 ))}
               </div>
-            ) : monDevices.length === 0 ? (
+            ) : monDevices.length === 0 && cachedFavouriteDevices.length === 0 ? (
               <div className="dash-empty-state">
                 <div className="dash-empty-icon"><IconWifi size={22} /></div>
                 <div className="dash-empty-title">No monitoring data yet</div>
@@ -581,6 +615,7 @@ export function OverviewWorkspace({
           busy={busy}
           device={null}
           cloneSource={null}
+          deviceTypes={deviceTypeOptions}
           groups={groups}
           snmpProfiles={snmpProfiles}
           sites={sites}
