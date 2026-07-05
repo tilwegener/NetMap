@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## [1.4.0] - 2026-07-05
+
 ### Added
 - **Single sign-on via OpenID Connect (OIDC)** — NetMap can now authenticate against any OIDC provider (Authentik, Authelia, Keycloak, Zitadel, Okta, Microsoft Entra ID, Google Workspace) using Authorization Code + PKCE. Configure via environment variables (`OIDC_ENABLED`, `OIDC_ISSUER`, `OIDC_CLIENT_ID`, …) or in-app under Admin → Security → Single Sign-On (DB settings override env; the client secret is stored encrypted and is write-only in the API). The login screen gains a "Continue with SSO" button alongside the existing username/password form. Security baseline: signed ID-token verification via provider JWKS (asymmetric algorithms only), issuer/audience checks, state + nonce validation bound to the browser with a single-use server-side transaction, PKCE S256, verified-email enforcement, optional email-domain allowlist — and no provider tokens ever reach the browser; a successful callback issues the normal NetMap session cookies. Includes identity linking by provider subject with optional first-time linking by verified email, optional auto-provisioning with a conservative default role (never SuperAdmin), group/role claim mapping with local-role precedence by default and explicit opt-in for provider-managed roles or SuperAdmin grants, an Admin "Test provider" diagnostic action, per-user auth-source (SSO) badges in Admin → Users, audit events for every provision/link/login/settings change, and an optional "Require SSO" mode with guard rails (provider must verify and an active SuperAdmin must exist) that always preserves SuperAdmin local login as the emergency recovery path. Migrations `0043_oidc_login_states`, `0044_external_identities`.
 - **Toast notifications** — actions across the app (deletes, saves, imports) now confirm success or surface failures in a bottom-right toast stack instead of failing silently or relying on scattered inline text.
@@ -24,7 +26,7 @@
 - **Instant Monitoring re-entry** — the Monitoring workspace keeps an in-memory stale-while-revalidate snapshot of the fleet summary, device table, and service checks. Returning to Monitoring renders the last known data immediately, then refreshes with a lightweight delta request when fresh or a full refresh when stale.
 
 ### Changed
-- **Sidebar collapse control** — the collapse/expand button now stays in the bottom utility area above a subtle separator in both sidebar states, and the collapsed Inventory badge overlays the icon instead of pushing it off-centre.
+- **Sidebar collapse control** — the collapse/expand button now stays in the bottom utility area above a subtle separator in both sidebar states, and the collapsed Inventory badge now sits at the icon's top-right corner instead of pushing it off-centre or overlapping it.
 - **HTTP/HTTPS monitoring scope clarified** — the current service-check groundwork is no longer described as the finished uptime-monitoring workflow; the dedicated HTTP/HTTPS monitoring method with per-check targeting, response timing, and alert integration remains planned.
 - **CI and bundle analysis cleanup** — GitHub workflows now use current major action versions for the Node 24 runner runtime, and normal production frontend builds skip the bundle visualizer unless explicitly run in analyze mode.
 - **Browser tab titles now show only the current screen** — authenticated pages use their page name without the `NetMap —` prefix, and login/setup/reset/loading states now show their own tab title instead of inheriting Overview.
