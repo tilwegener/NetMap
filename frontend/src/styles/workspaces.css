@@ -8,23 +8,48 @@
 }
 
 .admin-system-stat {
+  position: relative;
+  overflow: hidden;
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 18px 20px;
-  border: 1px solid rgba(190, 207, 221, 0.78);
-  border-radius: 10px;
-  background: #ffffff;
-  box-shadow: 0 1px 3px rgba(23, 32, 38, 0.08), 0 4px 14px rgba(23, 32, 38, 0.05);
+  gap: 14px;
+  padding: 18px 20px 16px;
+  border: 1px solid rgba(210, 214, 218, 0.8);
+  border-radius: 14px;
+  background:
+    linear-gradient(135deg, rgba(29, 154, 176, 0.08), rgba(255, 255, 255, 0) 45%),
+    #ffffff;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.05), 0 4px 14px rgba(0,0,0,0.03);
+  transition: box-shadow 0.2s, transform 0.2s;
 }
+
+.admin-system-stat:hover {
+  box-shadow: 0 2px 10px rgba(0,0,0,0.09), 0 8px 24px rgba(0,0,0,0.06), 0 0 0 1px rgba(29,154,176,0.18);
+  transform: translateY(-2px);
+}
+
+.admin-system-stat::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  border-radius: 14px 14px 0 0;
+  background: rgba(29, 154, 176, 0.48);
+}
+
+.admin-system-stat:nth-child(2)::before { background: rgba(31, 111, 208, 0.46); }
+.admin-system-stat:nth-child(3)::before { background: rgba(122, 66, 200, 0.44); }
+.admin-system-stat:nth-child(4)::before { background: rgba(45, 157, 120, 0.46); }
 
 .admin-system-stat-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 48px;
-  height: 48px;
-  border-radius: 10px;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
   flex: 0 0 auto;
 }
 
@@ -45,7 +70,7 @@
 
 .admin-system-stat strong {
   display: block;
-  font-size: 26px;
+  font-size: 24px;
   font-weight: 800;
   color: #1a2e3d;
   line-height: 1.1;
@@ -438,8 +463,8 @@
   }
 
   body.route-inventory .topology-content {
-    padding-left: 24px;
-    padding-right: 24px;
+    padding-left: 18px;
+    padding-right: 18px;
   }
 }
 
@@ -657,6 +682,10 @@ body.route-topology .topology-content {
   margin-top: 0;
   position: relative;
   z-index: 1;
+}
+
+body.route-topology .graph-surface {
+  border-top-left-radius: 0;
 }
 
 .topology-stats-chip {
@@ -1354,7 +1383,8 @@ body.theme-dark .topology-overlay-label {
   align-items: center;
   width: 100%;
   min-width: 0;
-  padding: 11px 18px;
+  padding: 11px 16px 11px 13px;
+  border-left: 3px solid transparent;
 }
 .inventory-row-check {
   display: flex;
@@ -1420,17 +1450,19 @@ body.theme-dark .topology-overlay-label {
   border: 0;
   border-bottom: 1px solid rgba(175, 198, 216, 0.7);
   border-left: 3px solid transparent;
+  box-shadow: inset 0 0 0 rgba(29, 154, 176, 0);
   color: #172026;
   background: #ffffff;
   text-align: left;
   cursor: pointer;
   font-size: 13.5px;
-  transition: background 0.13s, border-left-color 0.13s;
+  transition: background 0.13s ease, border-left-color 0.13s ease, box-shadow 0.13s ease;
 }
 
 .inventory-row:hover {
   background: var(--nm-row-hover);
   border-left-color: rgba(29, 154, 176, 0.3);
+  box-shadow: inset 3px 0 0 rgba(29, 154, 176, 0.28);
 }
 
 .inventory-row.active {
@@ -1469,10 +1501,16 @@ body:not(.theme-dark) .inventory-row:not(.active) {
 
 body:not(.theme-dark) .inventory-row:hover:not(.active) {
   background: var(--nm-row-hover);
+  border-left-color: rgba(29, 154, 176, 0.35);
+  box-shadow: inset 3px 0 0 rgba(29, 154, 176, 0.28);
 }
 
 body:not(.theme-dark) .inventory-row.active {
   background: var(--nm-shell-text);
+}
+
+body:not(.theme-dark) .inventory-row.active:hover {
+  background: var(--nm-row-hover);
 }
 
 .inventory-group-select {
@@ -2285,6 +2323,8 @@ body:not(.theme-dark) .inventory-row.active {
 }
 
 .admin-panel {
+  position: relative;
+  overflow: hidden;
   display: grid;
   gap: 14px;
   align-content: start;
@@ -2292,6 +2332,9 @@ body:not(.theme-dark) .inventory-row.active {
   padding: 20px;
   max-width: none;
   border-radius: 10px;
+  background:
+    linear-gradient(135deg, rgba(29, 154, 176, 0.06), rgba(255, 255, 255, 0) 34%),
+    var(--nm-surface);
 }
 
 .admin-panel-header {
@@ -2301,6 +2344,10 @@ body:not(.theme-dark) .inventory-row.active {
   gap: 12px;
   padding-bottom: 12px;
   border-bottom: 1px solid rgba(209, 220, 230, 0.6);
+}
+
+.admin-alert-delivery-panel {
+  margin-top: 18px;
 }
 
 .notif-provider-heading {
@@ -2976,6 +3023,12 @@ body.theme-dark .modal-header button.modal-close-btn:hover {
   cursor: pointer;
 }
 
+.tool-form-check-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
 .tool-form-inline-check input[type="checkbox"] {
   width: auto;
   min-height: auto;
@@ -2986,8 +3039,11 @@ body.theme-dark .modal-header button.modal-close-btn:hover {
 .tool-form-inline-check .tool-note {
   display: block;
   font-weight: 400;
-  font-size: 12px;
+  font-size: 11px;
   margin-top: 1px;
+  line-height: 1.35;
+  text-transform: none;
+  letter-spacing: 0;
 }
 
 .tool-form input,
@@ -3040,6 +3096,16 @@ body.theme-dark .modal-header button.modal-close-btn:hover {
   margin: 0;
   color: #587183;
   line-height: 1.45;
+}
+
+.tool-note--hint {
+  display: block;
+  margin-top: 1px;
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.35;
+  text-transform: none;
+  letter-spacing: 0;
 }
 
 .tool-output {
@@ -4703,4 +4769,3 @@ body.theme-dark .obs-row-type-badge--disappeared { background: rgba(224,80,80,0.
   color: #587183;
   background: #ecf1f6;
 }
-

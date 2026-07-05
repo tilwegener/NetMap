@@ -262,7 +262,7 @@ export function AlertsTab({
         )}
       </section>
 
-      <section className="panel admin-panel">
+      <section className="panel admin-panel admin-alert-delivery-panel">
         <div className="admin-panel-header">
           <h2 className="admin-section-title"><IconAlertCircle size={16} />Delivery history</h2>
         </div>
