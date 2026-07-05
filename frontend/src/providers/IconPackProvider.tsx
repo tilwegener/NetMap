@@ -3,7 +3,7 @@ import {
 } from "react";
 import { storageKeys, readString, writeString } from "../utils/storage";
 import {
-  builtInIconPack, loadIconPacks, readLocalIconPacks, writeLocalIconPacks,
+  builtInIconPack, fullTablerIconPack, loadFullTablerIconPack, loadIconPacks, readLocalIconPacks, writeLocalIconPacks,
   applyIconPackSelection, refreshDeviceTypeIconMap, type IconPack,
 } from "../icons";
 
@@ -29,6 +29,7 @@ export function useIconPacks(): IconPackApi {
 export function IconPackProvider({ children }: { children: ReactNode }) {
   const [iconPacks, setIconPacks] = useState<IconPack[]>([]);
   const [localIconPacks, setLocalIconPacks] = useState<IconPack[]>(() => readLocalIconPacks());
+  const [tablerPack, setTablerPack] = useState<IconPack>(fullTablerIconPack);
   const [iconPackLoading, setIconPackLoading] = useState(true);
   const [activeIconPackId, setActiveIconPackId] = useState(
     () => readString(storageKeys.iconPack) || builtInIconPack.id,
@@ -39,9 +40,13 @@ export function IconPackProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     async function bootstrapIconPacks() {
       setIconPackLoading(true);
-      const loaded = await loadIconPacks();
+      const [loaded, fullTabler] = await Promise.all([
+        loadIconPacks(),
+        loadFullTablerIconPack(),
+      ]);
       if (cancelled) return;
       setIconPacks(loaded);
+      setTablerPack(fullTabler);
       setIconPackLoading(false);
       setIconPackError(null);
     }
@@ -62,7 +67,7 @@ export function IconPackProvider({ children }: { children: ReactNode }) {
       if (existingIndex >= 0) merged[existingIndex] = pack;
       else merged.push(pack);
     });
-    const available = [builtInIconPack, ...merged];
+    const available = [builtInIconPack, tablerPack, ...merged];
     const selected = available.some((pack) => pack.id === activeIconPackId) ? activeIconPackId : builtInIconPack.id;
     applyIconPackSelection(available, selected);
     refreshDeviceTypeIconMap();
@@ -72,7 +77,7 @@ export function IconPackProvider({ children }: { children: ReactNode }) {
       return;
     }
     writeString(storageKeys.iconPack, selected);
-  }, [activeIconPackId, iconPacks, localIconPacks]);
+  }, [activeIconPackId, iconPacks, localIconPacks, tablerPack]);
 
   const api = useMemo<IconPackApi>(() => ({
     iconPacks,

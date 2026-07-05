@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Settings, Shield } from "lucide-react";
 import {
   IconUsers, IconShieldCheck, IconCloud, IconAlertCircle,
-  IconServer, IconCalendarClock,
+  IconServer, IconCalendarClock, IconPalette,
 } from "@tabler/icons-react";
 import {
   api,
@@ -19,11 +19,13 @@ import { AlertsTab } from "./tabs/AlertsTab";
 import { GroupsTab } from "./tabs/GroupsTab";
 import { CredentialsTab } from "./tabs/CredentialsTab";
 import { AutomationTab } from "./tabs/AutomationTab";
+import { DeviceIconsTab } from "./tabs/DeviceIconsTab";
 
-type AdminTabId = "system" | "users" | "security" | "notifications" | "alerts" | "groups" | "credentials" | "automation";
+type AdminTabId = "system" | "devices-icons" | "users" | "security" | "notifications" | "alerts" | "groups" | "credentials" | "automation";
 
 const adminTabs = [
   { id: "system", label: "System", Icon: Settings },
+  { id: "devices-icons", label: "Devices & Icons", Icon: IconPalette },
   { id: "users", label: "Users", Icon: IconUsers },
   { id: "groups", label: "Groups", Icon: IconShieldCheck },
   { id: "credentials", label: "SNMP Profiles", Icon: IconServer },
@@ -107,6 +109,9 @@ export function AdminWorkspace({
           onError={setError}
           onSuccess={setSuccess}
         />
+      )}
+      {activeTab === "devices-icons" && (
+        <DeviceIconsTab accessToken={accessToken} onError={setError} onSuccess={setSuccess} />
       )}
       {activeTab === "security" && (
         <SecurityTab

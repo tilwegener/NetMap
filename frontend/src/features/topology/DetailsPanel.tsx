@@ -1,6 +1,6 @@
 import type {
   Device, DevicePayload, DeviceLiveStatus, DeviceSecurityEventSummary,
-  Relationship, Site, SnmpProfile, TopologyGroup,
+  DeviceTypeOption, Relationship, Site, SnmpProfile, TopologyGroup,
 } from "../../api/client";
 import { DeviceDetails } from "../devices/DeviceDetails";
 import { RelationshipDetails } from "./RelationshipDetails";
@@ -18,6 +18,7 @@ export function DetailsPanel({
   selectedRelationship,
   allDevices,
   busy,
+  deviceTypes,
   groups,
   snmpProfiles,
   sites,
@@ -38,6 +39,7 @@ export function DetailsPanel({
   selectedRelationship: Relationship | null;
   allDevices: Device[];
   busy: boolean;
+  deviceTypes?: DeviceTypeOption[];
   groups: TopologyGroup[];
   snmpProfiles: SnmpProfile[];
   sites: Site[];
@@ -60,6 +62,7 @@ export function DetailsPanel({
           canWrite={canWrite}
           accessToken={accessToken || ""}
           device={selectedDevice}
+          deviceTypes={deviceTypes}
           disabled={busy}
           groups={groups}
           snmpProfiles={snmpProfiles}

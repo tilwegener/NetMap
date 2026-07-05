@@ -7,6 +7,7 @@ import {
   type DeviceSecurityEventSummary, type TopologyLayout, type DeviceIcon, type SnmpProfile,
 } from "../../api/client";
 import { useConfirm } from "../../components/ConfirmDialog";
+import { useToast } from "../../components/Toast";
 import { useIconPacks } from "../../providers/IconPackProvider";
 import {
   groupId, buildDiagramLayout,
@@ -28,6 +29,7 @@ import { exportTopologyPng, exportTopologySvg } from "./topologyExport";
 import { EntityList } from "./EntityList";
 import { TopologyToolbar, type GroupDisplayPref } from "./TopologyToolbar";
 import { DetailsPanel } from "./DetailsPanel";
+import { useDeviceTypes } from "../../hooks/useDeviceTypes";
 
 const DEFAULT_EDGE_LABEL_FONT_SIZE = 15;
 const DEFAULT_NODE_LABEL_FONT_SIZE = 11;
@@ -56,6 +58,7 @@ export function TopologyWorkspace({
   userId: number;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const toast = useToast();
   const cyRef = useRef<Core | null>(null);
   const layoutPositionsRef = useRef<Record<string, { x: number; y: number }>>({});
   const fitOnNextRenderRef = useRef(true);
@@ -63,6 +66,8 @@ export function TopologyWorkspace({
   const knownGroupIdsRef = useRef<Set<string>>(new Set());
   const confirmAction = useConfirm();
   const { activeIconPackId } = useIconPacks();
+  const deviceTypesQuery = useDeviceTypes(accessToken);
+  const deviceTypeOptions = deviceTypesQuery.options;
   const [selectedDeviceId, setSelectedDeviceId] = useState<number | null>(null);
   const [selectedRelationshipId, setSelectedRelationshipId] = useState<number | null>(null);
   const [panelHoveredDeviceId, setPanelHoveredDeviceId] = useState<number | null>(null);
@@ -895,6 +900,7 @@ export function TopologyWorkspace({
         ),
       }));
       void onGraphChange();
+      toast.success("Device saved", { detail: deviceLabel(updated) });
     } catch (err) {
       delete pendingDevicePatchesRef.current[deviceId];
       setTopologyError(err instanceof Error ? err.message : "Unable to update device");
@@ -916,6 +922,7 @@ export function TopologyWorkspace({
       }));
       setShowDeviceForm(false);
       setCloningDevice(null);
+      toast.success(cloningDevice ? "Device cloned" : "Device added", { detail: deviceLabel(created) });
       void onGraphChange();
     } catch (err) {
       setTopologyError(err instanceof Error ? err.message : "Unable to save device");
@@ -1532,6 +1539,7 @@ export function TopologyWorkspace({
             selectedRelationship={selectedRelationship}
             allDevices={liveGraph.devices}
             busy={busy}
+            deviceTypes={deviceTypeOptions}
             groups={groups}
             snmpProfiles={snmpProfiles}
             sites={sites}
@@ -1555,6 +1563,7 @@ export function TopologyWorkspace({
           busy={busy}
           device={null}
           cloneSource={cloningDevice}
+          deviceTypes={deviceTypeOptions}
           groups={groups}
           snmpProfiles={snmpProfiles}
           sites={sites}

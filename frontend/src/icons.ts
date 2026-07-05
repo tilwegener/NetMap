@@ -1,9 +1,40 @@
 import DOMPurify from "dompurify";
 import type { DeviceIcon } from "./api/client";
 import { localIconPacksStorageKey, deviceTypeIconMapStorageKey } from "./constants";
+import tablerIconMetaUrl from "../node_modules/@tabler/icons/icons.json?url";
+import tablerOutlineNodesUrl from "../node_modules/@tabler/icons/tabler-nodes-outline.json?url";
 
 export type IconGlyphDefinition = { value: string; label: string; path?: string; url?: string; symbol?: string };
 export type IconPack = { id: string; name: string; icons: IconGlyphDefinition[] };
+type TablerNode = [string, Record<string, string | number | boolean | null | undefined>];
+
+function tablerNodeToMarkup(node: TablerNode) {
+  const [tag, attrs] = node;
+  const attrText = Object.entries(attrs)
+    .filter(([, value]) => value !== null && value !== undefined)
+    .map(([key, value]) => `${key}="${String(value).replace(/"/g, "&quot;")}"`)
+    .join(" ");
+  return `<${tag}${attrText ? ` ${attrText}` : ""}/>`;
+}
+
+function buildFullTablerIconPack(
+  meta: Record<string, { name?: string }>,
+  nodes: Record<string, TablerNode[]>,
+): IconPack {
+  return {
+    id: "tabler-full",
+    name: "Tabler Icons",
+    icons: Object.entries(nodes)
+      .map(([value, iconNodes]) => ({
+        value,
+        label: labelFromIconValue(meta[value]?.name ?? value),
+        path: iconNodes.map(tablerNodeToMarkup).join(""),
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label)),
+  };
+}
+
+let fullTablerIconPackPromise: Promise<IconPack> | null = null;
 
 // All paths are Tabler Icons (MIT), viewBox 0 0 24 24, stroke-width 1.5
 export const builtInIconPack: IconPack = {
@@ -30,6 +61,25 @@ export const builtInIconPack: IconPack = {
   ],
 };
 
+export let fullTablerIconPack: IconPack = { id: "tabler-full", name: "Tabler Icons", icons: [] };
+
+export function loadFullTablerIconPack(): Promise<IconPack> {
+  if (fullTablerIconPack.icons.length > 0) return Promise.resolve(fullTablerIconPack);
+  if (!fullTablerIconPackPromise) {
+    fullTablerIconPackPromise = Promise.all([
+      fetch(tablerIconMetaUrl).then((response) => response.json()),
+      fetch(tablerOutlineNodesUrl).then((response) => response.json()),
+    ]).then(([meta, nodes]) => {
+      fullTablerIconPack = buildFullTablerIconPack(
+        meta as Record<string, { name?: string }>,
+        nodes as Record<string, TablerNode[]>,
+      );
+      return fullTablerIconPack;
+    });
+  }
+  return fullTablerIconPackPromise;
+}
+
 export const defaultDeviceTypeIconMap: Record<string, string> = {
   router: "router",
   switch: "switch",
@@ -46,6 +96,7 @@ export const defaultDeviceTypeIconMap: Record<string, string> = {
   phone: "phone",
   vpn: "vpn",
   cloud: "cloud",
+  other: "device",
   "virtual-machine": "hypervisor",
   unknown: "unknown",
 };
@@ -55,7 +106,7 @@ export const defaultDeviceTypeIconMap: Record<string, string> = {
 export let runtimeIconPackId = builtInIconPack.id;
 export let runtimeIconDefs = new Map<string, IconGlyphDefinition>(builtInIconPack.icons.map((icon) => [icon.value, icon]));
 export let runtimeIconOptions = builtInIconPack.icons.map(({ label, value }) => ({ label, value }));
-export let allRuntimePacks: IconPack[] = [builtInIconPack];
+export let allRuntimePacks: IconPack[] = [builtInIconPack, fullTablerIconPack];
 export let deviceTypeIconMap: Record<string, string> = { ...defaultDeviceTypeIconMap };
 
 // ── Device type icon map helpers ──────────────────────────────────────────────
@@ -237,4 +288,3 @@ export function deviceIconPath(icon: DeviceIcon) {
   const key = resolveDeviceIcon(icon);
   return runtimeIconDefs.get(key)?.path ?? runtimeIconDefs.get("device")?.path ?? runtimeIconDefs.get("unknown")?.path ?? "";
 }
-

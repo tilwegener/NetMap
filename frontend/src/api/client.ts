@@ -534,6 +534,7 @@ export type SystemSettings = {
   monitor_interval_seconds: number;
   idle_timeout_minutes: number;
   active_network_public_targets_enabled: boolean;
+  ip_reservation_default_expiry_enabled: boolean;
 };
 
 export type PermissionMeta = {

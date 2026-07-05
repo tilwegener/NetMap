@@ -34,6 +34,7 @@ export const deviceTypeOptions = [
   "phone",
   "vpn",
   "cloud",
+  "other",
   "unknown",
 ];
 

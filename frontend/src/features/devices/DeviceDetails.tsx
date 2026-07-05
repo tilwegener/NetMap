@@ -19,6 +19,7 @@ import {
   type DevicePayload,
   type DeviceStatus,
   type DeviceIcon,
+  type DeviceTypeOption,
   type SnmpEnrichmentPreview,
   type SnmpProfile,
   type TopologyGroup,
@@ -36,6 +37,7 @@ export function DeviceDetails({
   canViewSecurity,
   canWrite,
   device,
+  deviceTypes,
   disabled,
   groups,
   accessToken,
@@ -53,6 +55,7 @@ export function DeviceDetails({
   canViewSecurity: boolean;
   canWrite: boolean;
   device: Device;
+  deviceTypes?: DeviceTypeOption[];
   disabled: boolean;
   groups: TopologyGroup[];
   accessToken: string;
@@ -67,6 +70,9 @@ export function DeviceDetails({
   securityLoading: boolean;
   securitySummary: DeviceSecurityEventSummary | null;
 }) {
+  const typeOptions = deviceTypes && deviceTypes.length > 0
+    ? deviceTypes
+    : deviceTypeOptions.map((value) => ({ value, label: formatDeviceTypeLabel(value), icon: value === "other" ? "device" : value }));
   const [editingField, setEditingField] = useState<string | null>(null);
   const [fieldDraft, setFieldDraft] = useState<string>("");
   const [activeTab, setActiveTab] = useState<"details" | "activity">("details");
@@ -314,13 +320,14 @@ export function DeviceDetails({
                 value={fieldDraft}
                 onChange={(e) => {
                   const value = e.target.value;
-                  void commitField({ device_type: value || null, icon: (deviceTypeIconMap[value] || "device") as DeviceIcon });
+                  const icon = deviceTypeIconMap[value] || typeOptions.find((option) => option.value === value)?.icon || "device";
+                  void commitField({ device_type: value || null, icon: icon as DeviceIcon });
                 }}
                 onBlur={cancelEdit}
                 onKeyDown={(e) => { if (e.key === "Escape") cancelEdit(); }}
               >
-                {deviceTypeOptions.map((type) => (
-                  <option key={type} value={type}>{formatDeviceTypeLabel(type)}</option>
+                {typeOptions.map((type) => (
+                  <option key={type.value} value={type.value}>{type.label || formatDeviceTypeLabel(type.value)}</option>
                 ))}
               </select>
             </span>

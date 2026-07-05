@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useContext } from "react";
 import { ObservationsAlert } from "../../components/ObservationsAlert";
 import { useConfirm } from "../../components/ConfirmDialog";
+import { useToast } from "../../components/Toast";
 import { Search, Star, ChevronUp, ChevronDown } from "lucide-react";
 import { IconServer, IconWifi, IconWifiOff, IconTopologyRing } from "@tabler/icons-react";
 import {
@@ -9,7 +10,6 @@ import {
   type TopologyGraph, type TopologyGroup, type Site, type DeviceIcon,
   type DeviceSecurityEventSummary, type SnmpProfile,
 } from "../../api/client";
-import { deviceTypeOptions } from "../../constants";
 import { deviceTypeIconMap, iconLabel } from "../../icons";
 import { compareGroupLabels } from "../../utils/sort";
 import { deviceLabel, statusColor, formatDeviceTypeLabel } from "../../utils/format";
@@ -23,6 +23,7 @@ import { DeviceDetails } from "../devices/DeviceDetails";
 import { DeviceForm } from "../devices/DeviceForm";
 import { DiscoveryModal } from "../topology/DiscoveryModal";
 import { DeviceImportModal } from "../devices/DeviceImportModal";
+import { useDeviceTypes } from "../../hooks/useDeviceTypes";
 
 const INVENTORY_PAGE_SIZE_KEY = "netmap.inventory.pageSize";
 const INVENTORY_PAGE_SIZE_MIGRATION_KEY = "netmap.inventory.pageSizeDefault25";
@@ -56,6 +57,9 @@ export function InventoryWorkspace({
 }) {
   type InventoryStatusFilter = "all" | "online" | "offline" | "warning" | "unknown" | "disabled" | "paused";
   const confirmAction = useConfirm();
+  const toast = useToast();
+  const deviceTypesQuery = useDeviceTypes(accessToken);
+  const deviceTypeOptions = deviceTypesQuery.options;
   const [selectedDeviceId, setSelectedDeviceId] = useState<number | null>(graph.devices[0]?.id ?? null);
   const [selectedDeviceIds, setSelectedDeviceIds] = useState<Set<number>>(new Set());
   const [selectedGroupFilter, setSelectedGroupFilter] = useState('all');
@@ -274,7 +278,7 @@ export function InventoryWorkspace({
     else if (bulkGroupId) patch.topology_group_id = Number(bulkGroupId);
     if (bulkDeviceType) {
       patch.device_type = bulkDeviceType;
-      patch.icon = (deviceTypeIconMap[bulkDeviceType] || "device") as DeviceIcon;
+      patch.icon = (deviceTypeIconMap[bulkDeviceType] || deviceTypeOptions.find((option) => option.value === bulkDeviceType)?.icon || "device") as DeviceIcon;
     }
     if (bulkSiteId === 'unassign') patch.site_id = null;
     else if (bulkSiteId) patch.site_id = Number(bulkSiteId);
@@ -395,6 +399,7 @@ export function InventoryWorkspace({
     try {
       const updated = await api.updateDevice(accessToken, deviceId, payload);
       onDeviceChange(updated);
+      toast.success("Device saved", { detail: deviceLabel(updated) });
     } catch (err) {
       setInventoryError(err instanceof Error ? err.message : 'Unable to save device');
     } finally {
@@ -413,6 +418,7 @@ export function InventoryWorkspace({
       const created = await api.createDevice(accessToken, payload);
       onDeviceChange(created);
       setShowDeviceForm(false);
+      toast.success("Device added", { detail: deviceLabel(created) });
     } catch (err) {
       setInventoryError(err instanceof Error ? err.message : 'Unable to create device');
     } finally {
@@ -534,7 +540,7 @@ export function InventoryWorkspace({
                         Device type
                         <select className="inv-select" value={bulkDeviceType} onChange={(e) => setBulkDeviceType(e.target.value)}>
                           <option value="">No change</option>
-                          {deviceTypeOptions.map((t) => <option key={t} value={t}>{formatDeviceTypeLabel(t)}</option>)}
+                          {deviceTypeOptions.map((t) => <option key={t.value} value={t.value}>{t.label || formatDeviceTypeLabel(t.value)}</option>)}
                         </select>
                       </label>
                       <label>
@@ -726,6 +732,7 @@ export function InventoryWorkspace({
               canWrite={canWrite}
               accessToken={accessToken}
               device={selectedDevice}
+              deviceTypes={deviceTypeOptions}
               disabled={busy}
               groups={groups}
               snmpProfiles={snmpProfiles}
@@ -741,7 +748,7 @@ export function InventoryWorkspace({
       </div>
 
       {showDeviceForm && (
-        <DeviceForm busy={busy} device={null} cloneSource={null} groups={groups} snmpProfiles={snmpProfiles} sites={sites}
+        <DeviceForm busy={busy} device={null} cloneSource={null} deviceTypes={deviceTypeOptions} groups={groups} snmpProfiles={snmpProfiles} sites={sites}
           onCancel={() => setShowDeviceForm(false)} onSubmit={submitNewDevice} />
       )}
       {showScanModal && (

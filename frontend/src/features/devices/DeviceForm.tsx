@@ -5,6 +5,7 @@ import {
   type DevicePayload,
   type DeviceStatus,
   type DeviceIcon,
+  type DeviceTypeOption,
   type SnmpProfile,
   type TopologyGroup,
   type Site,
@@ -18,6 +19,7 @@ export function DeviceForm({
   busy,
   cloneSource,
   device,
+  deviceTypes,
   groups,
   snmpProfiles,
   sites,
@@ -27,6 +29,7 @@ export function DeviceForm({
   busy: boolean;
   cloneSource: Device | null;
   device: Device | null;
+  deviceTypes?: DeviceTypeOption[];
   groups: TopologyGroup[];
   snmpProfiles: SnmpProfile[];
   sites: Site[];
@@ -34,6 +37,10 @@ export function DeviceForm({
   onSubmit: (payload: DevicePayload) => Promise<void>;
 }) {
   const formId = "device-form";
+  const typeOptions = deviceTypes && deviceTypes.length > 0
+    ? deviceTypes
+    : deviceTypeOptions.map((value) => ({ value, label: formatDeviceTypeLabel(value), icon: value === "other" ? "device" : value }));
+  const typeValues = typeOptions.map((option) => option.value);
   const [form, setForm] = useState({
     display_name: device?.display_name ?? cloneSource?.display_name ?? "",
     hostname: initialDeviceName(device, cloneSource),
@@ -55,23 +62,23 @@ export function DeviceForm({
     notes: device?.notes ?? cloneSource?.notes ?? "",
   });
   const initialType = device?.device_type ?? cloneSource?.device_type ?? "";
-  const [customType, setCustomType] = useState(Boolean(initialType) && !deviceTypeOptions.includes(initialType));
+  const [customType, setCustomType] = useState(Boolean(initialType) && !typeValues.includes(initialType));
   const [monitoringPaused, setMonitoringPaused] = useState(device?.monitoring_paused ?? false);
 
   function update(field: keyof typeof form, value: string) {
     setForm((current) => {
       const next = { ...current, [field]: value };
       if (field === "device_type") {
-        next.icon = deviceTypeIconMap[value] || "device";
+        next.icon = deviceTypeIconMap[value] || typeOptions.find((option) => option.value === value)?.icon || "device";
       }
       return next;
     });
   }
 
-  function submit(event: FormEvent) {
+  async function submit(event: FormEvent) {
     event.preventDefault();
     const selectedDeviceType = blankToNull(form.device_type);
-    onSubmit({
+    await onSubmit({
       display_name: blankToNull(form.display_name),
       hostname: blankToNull(form.hostname),
       ip_address: form.ip_address.trim() || "",
@@ -104,7 +111,7 @@ export function DeviceForm({
       headerSubmitDisabled={busy}
       wide
     >
-      <form id={formId} className="modal-form device-form" onSubmit={submit}>
+      <form id={formId} className="modal-form device-form" onSubmit={(event) => void submit(event)}>
         <div className="device-form-body">
           <div className="device-form-col">
             <div className="device-form-section">
@@ -155,9 +162,9 @@ export function DeviceForm({
                       }
                     }}
                   >
-                    {deviceTypeOptions.map((type) => (
-                      <option key={type} value={type}>
-                        {formatDeviceTypeLabel(type)}
+                    {typeOptions.map((type) => (
+                      <option key={type.value} value={type.value}>
+                        {type.label || formatDeviceTypeLabel(type.value)}
                       </option>
                     ))}
                     <option value="__custom__">Custom…</option>

@@ -1,20 +1,15 @@
 import { FormEvent, useState } from "react";
 import { Modal } from "./Modal";
-import { deviceTypeOptions } from "../constants";
 import {
-  applyDeviceTypeIconMap,
   builtInIconPack,
-  defaultDeviceTypeIconMap,
   extractSvgIconMarkup,
+  fullTablerIconPack,
   labelFromIconValue,
-  readDeviceTypeIconMap,
   sanitizeIconDefs,
   slugifyIconValue,
   type IconGlyphDefinition,
   type IconPack,
 } from "../icons";
-import { formatDeviceTypeLabel } from "../utils/format";
-import { DeviceTypeIconPicker } from "./IconPicker";
 
 export function IconManagerModal({
   activeIconPackId,
@@ -37,15 +32,14 @@ export function IconManagerModal({
   onRemoveLocalIconPack: (id: string) => void;
   onClose: () => void;
 }) {
-  const [tab, setTab] = useState<"packs" | "import" | "device-types">("packs");
+  const [tab, setTab] = useState<"packs" | "import">("packs");
   const [busy, setBusy] = useState(false);
   const [modalError, setModalError] = useState<string | null>(null);
   const [modalSuccess, setModalSuccess] = useState<string | null>(null);
-  const [typeIconMap, setTypeIconMap] = useState<Record<string, string>>(() => readDeviceTypeIconMap());
-  const [typeIconSaved, setTypeIconSaved] = useState(false);
 
   const allPacksList = [
     { pack: builtInIconPack, isLocal: false },
+    { pack: fullTablerIconPack, isLocal: false },
     ...iconPacks.map((p) => ({ pack: p, isLocal: false })),
     ...localIconPacks.filter((lp) => !iconPacks.some((sp) => sp.id === lp.id)).map((p) => ({ pack: p, isLocal: true })),
   ];
@@ -143,9 +137,9 @@ export function IconManagerModal({
   return (
     <Modal title="Icon Manager" onCancel={onClose} modalClassName="icon-mgr-modal" bodyClassName="modal-body--flush">
       <div className="icon-mgr-tabs">
-        {(["packs", "import", "device-types"] as const).map((t) => (
+        {(["packs", "import"] as const).map((t) => (
           <button key={t} type="button" className={`icon-mgr-tab${tab === t ? " active" : ""}`} onClick={() => setTab(t)}>
-            {t === "packs" ? "Packs" : t === "import" ? "Import" : "Device types"}
+            {t === "packs" ? "Packs" : "Import"}
           </button>
         ))}
       </div>
@@ -256,33 +250,6 @@ export function IconManagerModal({
             </div>
           )}
 
-          {tab === "device-types" && (
-            <div className="icon-mgr-device-types">
-              <p className="tool-note" style={{ padding: "0 0 12px" }}>
-                Set the default icon for each device type - applied automatically when a type is selected in the device form.
-              </p>
-              <div className="device-type-icon-grid">
-                {deviceTypeOptions.map((type) => (
-                  <div key={type} className="device-type-icon-row">
-                    <span className="dtype-type-label">{formatDeviceTypeLabel(type)}</span>
-                    <DeviceTypeIconPicker
-                      currentIcon={typeIconMap[type] || "unknown"}
-                      onSelect={(icon) => setTypeIconMap((c) => ({ ...c, [type]: icon }))}
-                    />
-                  </div>
-                ))}
-              </div>
-              <div className="icon-mgr-device-types-actions nm-btn-row">
-                <button type="button" className="nm-btn nm-btn--primary" onClick={() => { applyDeviceTypeIconMap(typeIconMap); setTypeIconSaved(true); setTimeout(() => setTypeIconSaved(false), 2000); }}>
-                  Save mapping
-                </button>
-                <button type="button" className="nm-btn" onClick={() => { const d = { ...defaultDeviceTypeIconMap }; setTypeIconMap(d); applyDeviceTypeIconMap(d); }}>
-                  Reset to defaults
-                </button>
-                {typeIconSaved && <span className="icon-mgr-saved-tick">Saved ✓</span>}
-              </div>
-            </div>
-          )}
         </div>
     </Modal>
   );
