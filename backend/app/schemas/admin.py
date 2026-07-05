@@ -1,3 +1,5 @@
+import re
+
 from pydantic import BaseModel, Field, ValidationInfo, field_validator
 
 
@@ -97,3 +99,76 @@ class RolePermissionsUpdate(BaseModel):
 
 class RoleCreate(BaseModel):
     name: str = Field(min_length=2, max_length=40, pattern=r"^[A-Za-z][A-Za-z0-9_-]*$")
+
+
+def normalize_device_type_value(value: str) -> str:
+    normalized = re.sub(r"[^a-z0-9]+", "-", value.strip().lower()).strip("-")
+    if not normalized:
+        raise ValueError("Device type must contain at least one letter or number")
+    return normalized[:80]
+
+
+class DeviceTypeRead(BaseModel):
+    id: int | None = None
+    value: str
+    label: str
+    icon: str = "device"
+    is_builtin: bool = False
+
+
+class DeviceTypeCreate(BaseModel):
+    label: str = Field(min_length=2, max_length=80)
+    value: str | None = Field(default=None, max_length=80)
+    icon: str = Field(default="device", min_length=1, max_length=80)
+
+    @field_validator("label")
+    @classmethod
+    def normalize_label(cls, value: str) -> str:
+        normalized = " ".join(value.strip().split())
+        if not normalized:
+            raise ValueError("Device type label is required")
+        return normalized
+
+    @field_validator("value")
+    @classmethod
+    def normalize_value(cls, value: str | None) -> str | None:
+        if value is None or not value.strip():
+            return None
+        return normalize_device_type_value(value)
+
+    @field_validator("icon")
+    @classmethod
+    def normalize_icon(cls, value: str) -> str:
+        normalized = value.strip() or "device"
+        return normalized[:80]
+
+
+class DeviceTypeUpdate(BaseModel):
+    label: str | None = Field(default=None, min_length=2, max_length=80)
+    value: str | None = Field(default=None, max_length=80)
+    icon: str | None = Field(default=None, min_length=1, max_length=80)
+
+    @field_validator("label")
+    @classmethod
+    def normalize_label(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = " ".join(value.strip().split())
+        if not normalized:
+            raise ValueError("Device type label is required")
+        return normalized
+
+    @field_validator("value")
+    @classmethod
+    def normalize_value(cls, value: str | None) -> str | None:
+        if value is None or not value.strip():
+            return None
+        return normalize_device_type_value(value)
+
+    @field_validator("icon")
+    @classmethod
+    def normalize_icon(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip() or "device"
+        return normalized[:80]

@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, require_super_admin
@@ -15,6 +15,7 @@ from app.models.user import User
 from app.schemas.admin import (
     DeviceTypeCreate,
     DeviceTypeRead,
+    DeviceTypeUpdate,
     NotificationSettings,
     NotificationSettingsUpdate,
     PermissionMeta,
@@ -157,6 +158,41 @@ def create_device_type(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Device type already exists")
     row = DeviceType(value=value, label=payload.label, icon=payload.icon or "device", is_builtin=False)
     db.add(row)
+    db.commit()
+    db.refresh(row)
+    return _device_type_read(row)
+
+
+@router.patch("/device-types/{value}", response_model=DeviceTypeRead)
+def update_device_type(
+    value: str,
+    payload: DeviceTypeUpdate,
+    _current_user: Annotated[User, Depends(require_super_admin)],
+    db: Annotated[Session, Depends(get_db)],
+) -> DeviceTypeRead:
+    normalized = normalize_device_type_value(value)
+    if normalized in BUILT_IN_DEVICE_TYPE_VALUES:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Built-in device types cannot be edited")
+    row = db.scalar(select(DeviceType).where(DeviceType.value == normalized))
+    if not row:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Device type not found")
+
+    updates = payload.model_dump(exclude_unset=True)
+    next_value = updates.get("value") or row.value
+    if next_value in BUILT_IN_DEVICE_TYPE_VALUES:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Device type already exists")
+    if next_value != row.value:
+        existing = db.scalar(select(DeviceType.id).where(DeviceType.value == next_value).limit(1))
+        if existing is not None:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Device type already exists")
+        db.execute(update(Device).where(Device.device_type == row.value).values(device_type=next_value))
+        row.value = next_value
+
+    if "label" in updates and updates["label"] is not None:
+        row.label = updates["label"]
+    if "icon" in updates and updates["icon"] is not None:
+        row.icon = updates["icon"]
+    row.updated_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(row)
     return _device_type_read(row)
