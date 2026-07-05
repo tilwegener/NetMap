@@ -172,6 +172,24 @@ def login(
         apply_progressive_delay(attempts)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
+    # SSO-required mode: local login stays available to SuperAdmins as the
+    # documented emergency recovery path; everyone else must use SSO.
+    from app.services.oidc.config import get_oidc_config
+
+    oidc_config = get_oidc_config(db)
+    if oidc_config.require_sso and oidc_config.is_usable and user.role != UserRole.SUPER_ADMIN:
+        write_audit(
+            db,
+            action="auth.login_blocked_sso_required",
+            target=f"user:{payload.username}",
+            detail=f"ip={client_ip or '-'}",
+        )
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Local sign-in is disabled. Use single sign-on.",
+        )
+
     clear_login_failures(db, subjects)
     access_token = create_access_token(user.id)
     refresh_token = create_refresh_token(user.id)
@@ -326,8 +344,21 @@ def change_password(
 def list_users(
     _current_user: Annotated[User, Depends(require_super_admin)],
     db: Annotated[Session, Depends(get_db)],
-) -> list[User]:
-    return db.scalars(select(User).order_by(User.username)).all()
+) -> list[UserRead]:
+    from app.services.oidc.accounts import auth_source_map
+
+    users = db.scalars(select(User).order_by(User.username)).all()
+    identities = auth_source_map(db, [u.id for u in users])
+    rows: list[UserRead] = []
+    for user in users:
+        row = UserRead.model_validate(user)
+        identity = identities.get(user.id)
+        if identity is not None:
+            row.auth_source = "oidc"
+            row.sso_issuer = identity.issuer
+            row.sso_last_login_at = identity.last_login_at
+        rows.append(row)
+    return rows
 
 
 @router.post("/auth/users", response_model=UserRead, status_code=status.HTTP_201_CREATED)

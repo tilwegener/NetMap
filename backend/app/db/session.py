@@ -45,7 +45,7 @@ def get_db() -> Generator[Session, None, None]:
 
 
 def init_db() -> None:
-    from app.models import alert_rule, auth_session, audit_log, device, device_type, dhcp_lease, discovery, ip_reservation, monitor_history, notification_delivery, notification_profile, password_reset_token, port_target, relationship, saved_search, site, snmp_profile, subnet, system_setting, topology_group, topology_layout, user, user_device_favourite  # noqa: F401
+    from app.models import alert_rule, auth_session, audit_log, device, device_type, dhcp_lease, discovery, ip_reservation, monitor_history, notification_delivery, notification_profile, oidc, password_reset_token, port_target, relationship, saved_search, site, snmp_profile, subnet, system_setting, topology_group, topology_layout, user, user_device_favourite  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
     _ensure_migrations_table()
@@ -132,6 +132,8 @@ def apply_sqlite_schema_updates() -> None:
         _run_migration(conn, inspector, "0040_ip_reservation_expiry", _migrate_ip_reservation_expiry)
         _run_migration(conn, inspector, "0041_saved_security_searches", _migrate_saved_security_searches)
         _run_migration(conn, inspector, "0042_device_types", _migrate_device_types)
+        _run_migration(conn, inspector, "0043_oidc_login_states", _migrate_oidc_login_states)
+        _run_migration(conn, inspector, "0044_external_identities", _migrate_external_identities)
 
 
 def _run_migration(conn, inspector, name: str, fn) -> None:
@@ -925,3 +927,51 @@ def _migrate_device_types(conn, inspector) -> None:
     )
     conn.execute(text("CREATE INDEX IF NOT EXISTS ix_device_types_id ON device_types (id)"))
     conn.execute(text("CREATE INDEX IF NOT EXISTS ix_device_types_value ON device_types (value)"))
+
+
+def _migrate_oidc_login_states(conn, inspector) -> None:
+    conn.execute(
+        text(
+            """
+            CREATE TABLE IF NOT EXISTS oidc_login_states (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                state VARCHAR(128) NOT NULL UNIQUE,
+                nonce VARCHAR(128) NOT NULL,
+                code_verifier VARCHAR(128) NOT NULL,
+                redirect_uri VARCHAR(512) NOT NULL,
+                created_at DATETIME NOT NULL,
+                expires_at DATETIME NOT NULL,
+                used_at DATETIME
+            )
+            """
+        )
+    )
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_oidc_login_states_id ON oidc_login_states (id)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_oidc_login_states_state ON oidc_login_states (state)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_oidc_login_states_expires_at ON oidc_login_states (expires_at)"))
+
+
+def _migrate_external_identities(conn, inspector) -> None:
+    conn.execute(
+        text(
+            """
+            CREATE TABLE IF NOT EXISTS external_identities (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                provider_key VARCHAR(40) NOT NULL DEFAULT 'oidc',
+                issuer VARCHAR(255) NOT NULL,
+                subject VARCHAR(255) NOT NULL,
+                user_id INTEGER NOT NULL REFERENCES users (id),
+                email VARCHAR(254),
+                email_verified BOOLEAN NOT NULL DEFAULT 0,
+                display_name VARCHAR(100),
+                created_at DATETIME NOT NULL,
+                last_login_at DATETIME,
+                CONSTRAINT uq_external_identity_issuer_subject UNIQUE (issuer, subject)
+            )
+            """
+        )
+    )
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_external_identities_id ON external_identities (id)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_external_identities_issuer ON external_identities (issuer)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_external_identities_subject ON external_identities (subject)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_external_identities_user_id ON external_identities (user_id)"))

@@ -10,6 +10,7 @@ from app.models.lldp import LldpNeighbour
 from app.models.firewall_event import FirewallEvent
 from app.models.ip_reservation import IpReservation
 from app.models.notification_profile import NotificationProfile
+from app.models.oidc import ExternalIdentity, OidcLoginState
 from app.models.password_reset_token import PasswordResetToken
 from app.models.relationship import DeviceRelationship
 from app.models.snmp_profile import SnmpProfile
@@ -32,7 +33,9 @@ __all__ = [
     "DiscoveryObservation",
     "DiscoveryScan",
     "DiscoverySchedule",
+    "ExternalIdentity",
     "LldpNeighbour",
+    "OidcLoginState",
     "FirewallEvent",
     "SnmpProfile",
     "TopologyLayout",

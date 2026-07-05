@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.user import UserRole
@@ -64,6 +66,9 @@ class UserRead(BaseModel):
     display_name: str | None = None
     avatar_data: str | None = None
     email: str | None = None
+    auth_source: str = "local"
+    sso_issuer: str | None = None
+    sso_last_login_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
