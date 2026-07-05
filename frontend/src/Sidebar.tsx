@@ -44,15 +44,6 @@ export function Sidebar({
           <img src="/favicon.svg" width="28" height="28" alt="" />
           {!collapsed && <span>NetMap</span>}
         </button>
-        <button
-          type="button"
-          className="sidebar-collapse-btn"
-          onClick={onToggleCollapse}
-          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-        >
-          {collapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
-        </button>
       </div>
       <nav>
         {appRoutes
@@ -87,14 +78,26 @@ export function Sidebar({
             );
           })}
       </nav>
-      <button className="sidebar-theme-toggle" type="button" onClick={toggleTheme} title={collapsed ? (theme === "dark" ? "Light mode" : "Dark mode") : undefined}>
-        {theme === "dark" ? <Sun size={16} aria-hidden="true" /> : <Moon size={16} aria-hidden="true" />}
-        {!collapsed && (theme === "dark" ? "Light mode" : "Dark mode")}
-      </button>
-      <button className="sidebar-logout" type="button" onClick={onLogout} title={collapsed ? "Sign out" : undefined}>
-        <LogOut size={16} aria-hidden="true" />
-        {!collapsed && "Sign out"}
-      </button>
+      <div className="sidebar-footer-actions">
+        <button
+          type="button"
+          className="sidebar-collapse-btn sidebar-collapse-btn--footer"
+          onClick={onToggleCollapse}
+          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+        >
+          {collapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
+          {!collapsed && "Collapse sidebar"}
+        </button>
+        <button className="sidebar-theme-toggle" type="button" onClick={toggleTheme} title={collapsed ? (theme === "dark" ? "Light mode" : "Dark mode") : undefined}>
+          {theme === "dark" ? <Sun size={16} aria-hidden="true" /> : <Moon size={16} aria-hidden="true" />}
+          {!collapsed && (theme === "dark" ? "Light mode" : "Dark mode")}
+        </button>
+        <button className="sidebar-logout" type="button" onClick={onLogout} title={collapsed ? "Sign out" : undefined}>
+          <LogOut size={16} aria-hidden="true" />
+          {!collapsed && "Sign out"}
+        </button>
+      </div>
       {versionInfo && (
         <div className="sidebar-version" title={collapsed ? versionLabel : undefined}>
           {!collapsed && (

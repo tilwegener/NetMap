@@ -170,6 +170,12 @@ body.theme-dark .inv-stat-chip--muted { color: #7a9aaa; border-color: rgba(122,1
   cursor: default;
 }
 
+body.route-overview .dash-stat {
+  background:
+    linear-gradient(135deg, rgba(29, 154, 176, 0.08), rgba(255, 255, 255, 0) 44%),
+    #ffffff;
+}
+
 .dash-stat:hover {
   box-shadow: 0 2px 10px rgba(0,0,0,0.09), 0 8px 24px rgba(0,0,0,0.06);
   transform: translateY(-2px);
@@ -480,6 +486,12 @@ body.theme-dark .dash-alert-tag--more { background: rgba(140,160,180,0.07); bord
   overflow: hidden;
   display: flex;
   flex-direction: column;
+}
+
+body.route-overview .dash-panel {
+  background:
+    linear-gradient(135deg, rgba(29, 154, 176, 0.055), rgba(255, 255, 255, 0) 34%),
+    #ffffff;
 }
 
 .dash-panel-body {
@@ -1098,4 +1110,3 @@ body.theme-dark .dash-alert-tag--more { background: rgba(140,160,180,0.07); bord
   color: #5b7c91;
   line-height: 1.4;
 }
-
