@@ -2684,14 +2684,17 @@ body.theme-dark .device-form-actions { border-top-color: rgba(255,255,255,0.05);
 .ipam-subnet-row { cursor: pointer; }
 
 /* dark mode */
-body.theme-dark .ipam-detail-modal { background: var(--nm-shell); }
-body.theme-dark .ipam-addr-table th { background: #1a2535; color: var(--nm-text-faint); border-color: var(--nm-border-strong); }
-body.theme-dark .ipam-addr-table td { border-color: #253545; }
+body.theme-dark .ipam-detail-modal { background: #182635; border-color: var(--nm-border-strong); }
+body.theme-dark .ipam-detail-modal-shell,
+body.theme-dark .ipam-modal-body { background: #182635; }
+body.theme-dark .ipam-addr-table th { background: #203143; color: #9bbdd4; border-color: var(--nm-border-strong); }
+body.theme-dark .ipam-addr-table td { border-color: #2d3d52; }
+body.theme-dark .ipam-addr-row:hover { background: #203143; }
 body.theme-dark .ipam-addr-label { color: #c9d9e6; }
-body.theme-dark .ipam-modal-header { border-color: rgba(40,70,90,0.6); }
+body.theme-dark .ipam-modal-header { background: #182635; border-color: var(--nm-border-strong); }
 body.theme-dark .ipam-modal-name { color: #d8eaf5; }
-body.theme-dark .ipam-modal-stats { border-color: rgba(40,70,90,0.6); }
-body.theme-dark .ipam-modal-stat { border-color: rgba(40,70,90,0.6); }
+body.theme-dark .ipam-modal-stats { background: #182635; border-color: var(--nm-border-strong); }
+body.theme-dark .ipam-modal-stat { border-color: var(--nm-border-strong); }
 body.theme-dark .ipam-modal-stat-label { color: #4a6a80; }
 body.theme-dark .ipam-modal-stat-val { color: #d8eaf5; }
 body.theme-dark .ipam-modal-stat-of { color: #4a6a80; }
