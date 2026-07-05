@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Settings, UserCircle } from "lucide-react";
 import {
   IconUsers, IconCloud, IconDatabase, IconDeviceDesktop, IconBolt,
-  IconPalette, IconServer,
+  IconServer,
 } from "@tabler/icons-react";
 import {
   api,
@@ -10,10 +10,7 @@ import {
   type DashboardSummary, type TopologyGraph,
 } from "../../../api/client";
 import { useApiQuery } from "../../../hooks/useApiQuery";
-import { useIconPacks } from "../../../providers/IconPackProvider";
-import { builtInIconPack, allRuntimePacks } from "../../../icons";
 import { triggerDownload } from "../../../utils/download";
-import { IconManagerModal } from "../../../components/IconManagerModal";
 import { fmtBytes } from "../notificationProfiles";
 
 export function SystemTab({
@@ -37,20 +34,21 @@ export function SystemTab({
   onError: (message: string | null) => void;
   onSuccess: (message: string | null) => void;
 }) {
-  const {
-    iconPacks, localIconPacks, activeIconPackId, iconPackLoading, iconPackError,
-    selectIconPack: onSelectIconPack,
-    addLocalIconPack: onAddLocalIconPack,
-    removeLocalIconPack: onRemoveLocalIconPack,
-  } = useIconPacks();
-
-  const [settingsForm, setSettingsForm] = useState<SystemSettings>({ app_name: "NetMap", login_message: "", announcement: "", live_ping_enabled: true, monitor_interval_seconds: 300, idle_timeout_minutes: 15, active_network_public_targets_enabled: false });
+  const [settingsForm, setSettingsForm] = useState<SystemSettings>({
+    app_name: "NetMap",
+    login_message: "",
+    announcement: "",
+    live_ping_enabled: true,
+    monitor_interval_seconds: 300,
+    idle_timeout_minutes: 15,
+    active_network_public_targets_enabled: false,
+    ip_reservation_default_expiry_enabled: true,
+  });
   const [monitorIntervalRaw, setMonitorIntervalRaw] = useState("300");
   const [idleTimeoutRaw, setIdleTimeoutRaw] = useState("15");
   const [settingsBusy, setSettingsBusy] = useState(false);
   const [restoreFile, setRestoreFile] = useState<File | null>(null);
   const [backupBusy, setBackupBusy] = useState<string | null>(null);
-  const [iconModalOpen, setIconModalOpen] = useState(false);
   const [diagnostics, setDiagnostics] = useState<SystemDiagnostics | null>(null);
   const [diagBusy, setDiagBusy] = useState(false);
 
@@ -169,8 +167,10 @@ export function SystemTab({
               </label>
               <label className="tool-form-inline-check">
                 <input type="checkbox" checked={settingsForm.live_ping_enabled} onChange={(e) => setSettingsForm((c) => ({ ...c, live_ping_enabled: e.target.checked }))} />
-                Enable live ping monitoring
-                <span className="tool-note" style={{ margin: 0 }}>Uncheck to disable all background ping checks across the app</span>
+                <span className="tool-form-check-copy">
+                  <span>Enable live ping monitoring</span>
+                  <span className="tool-note">Uncheck to disable all background ping checks across the app</span>
+                </span>
               </label>
               <label>
                 Live ping interval (seconds)
@@ -195,8 +195,8 @@ export function SystemTab({
                         style={err ? { borderColor: "var(--dash-red)" } : undefined}
                       />
                       {err
-                        ? <span className="tool-note" style={{ margin: 0, color: "var(--dash-red)" }}>{err}</span>
-                        : <span className="tool-note" style={{ margin: 0 }}>How often NetMap runs background ping and service checks. Default is 300 seconds.</span>
+                        ? <span className="tool-note tool-note--hint" style={{ color: "var(--dash-red)" }}>{err}</span>
+                        : <span className="tool-note tool-note--hint">How often NetMap runs background ping and service checks. Default is 300 seconds.</span>
                       }
                     </>
                   );
@@ -204,8 +204,17 @@ export function SystemTab({
               </label>
               <label className="tool-form-inline-check">
                 <input type="checkbox" checked={settingsForm.active_network_public_targets_enabled} onChange={(e) => setSettingsForm((c) => ({ ...c, active_network_public_targets_enabled: e.target.checked }))} />
-                Allow public active network targets
-                <span className="tool-note" style={{ margin: 0 }}>Enables public IP and hostname targets for ping, traceroute, and TCP checks</span>
+                <span className="tool-form-check-copy">
+                  <span>Allow public active network targets</span>
+                  <span className="tool-note">Enables public IP and hostname targets for ping, traceroute, and TCP checks</span>
+                </span>
+              </label>
+              <label className="tool-form-inline-check">
+                <input type="checkbox" checked={settingsForm.ip_reservation_default_expiry_enabled} onChange={(e) => setSettingsForm((c) => ({ ...c, ip_reservation_default_expiry_enabled: e.target.checked }))} />
+                <span className="tool-form-check-copy">
+                  <span>Default new IP reservations to +90 days</span>
+                  <span className="tool-note">When enabled, new IPAM reservations prefill an expiry date 90 days ahead. Users can clear the field before saving.</span>
+                </span>
               </label>
               <label>
                 Idle session timeout (minutes)
@@ -230,8 +239,8 @@ export function SystemTab({
                         style={err ? { borderColor: "var(--dash-red)" } : undefined}
                       />
                       {err
-                        ? <span className="tool-note" style={{ margin: 0, color: "var(--dash-red)" }}>{err}</span>
-                        : <span className="tool-note" style={{ margin: 0 }}>Users are logged out after this many minutes of inactivity (1–480). Set to 480 to effectively disable.</span>
+                        ? <span className="tool-note tool-note--hint" style={{ color: "var(--dash-red)" }}>{err}</span>
+                        : <span className="tool-note tool-note--hint">Users are logged out after this many minutes of inactivity (1–480). Set to 480 to effectively disable.</span>
                       }
                     </>
                   );
@@ -266,7 +275,7 @@ export function SystemTab({
             <section className="panel admin-panel">
               <div className="system-icon-header">
                 <h2 className="admin-section-title" style={{ margin: 0 }}><IconCloud size={16} />Version</h2>
-                <button type="button" className="nm-btn nm-btn--secondary" onClick={onOpenWhatsNew}>
+                <button type="button" className="nm-btn nm-btn--primary" onClick={onOpenWhatsNew}>
                   What&apos;s new
                 </button>
               </div>
@@ -290,20 +299,6 @@ export function SystemTab({
               </dl>
             </section>
           )}
-          <section className="panel admin-panel">
-            <div className="system-icon-header">
-              <div>
-                <h2 className="admin-section-title" style={{ margin: 0 }}><IconPalette size={16} />Icons</h2>
-                <p className="tool-note" style={{ margin: "2px 0 0" }}>
-                  Active: <strong>{[builtInIconPack, ...iconPacks, ...localIconPacks].find((p) => p.id === activeIconPackId)?.name ?? "Built-in"}</strong>
-                  {" · "}{allRuntimePacks.length} pack{allRuntimePacks.length !== 1 ? "s" : ""}
-                </p>
-              </div>
-              <button type="button" className="nm-btn nm-btn--primary" onClick={() => setIconModalOpen(true)}>
-                Manage icons →
-              </button>
-            </div>
-          </section>
           <section className="panel admin-panel">
             <h2 className="admin-section-title"><IconDatabase size={16} />Syslog configuration</h2>
             {syslogStatus ? (
@@ -379,19 +374,6 @@ export function SystemTab({
           </section>
         </div>
       </div>
-      {iconModalOpen && (
-        <IconManagerModal
-          activeIconPackId={activeIconPackId}
-          iconPacks={iconPacks}
-          localIconPacks={localIconPacks}
-          iconPackLoading={iconPackLoading}
-          iconPackError={iconPackError}
-          onSelectIconPack={onSelectIconPack}
-          onAddLocalIconPack={onAddLocalIconPack}
-          onRemoveLocalIconPack={onRemoveLocalIconPack}
-          onClose={() => setIconModalOpen(false)}
-        />
-      )}
     </div>
   );
 }

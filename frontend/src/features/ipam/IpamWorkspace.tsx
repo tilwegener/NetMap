@@ -32,18 +32,26 @@ function ipamAddressLabel(entry: IpAddressEntry): string | null {
   return null;
 }
 
+function defaultReservationExpiryDate() {
+  const date = new Date();
+  date.setDate(date.getDate() + 90);
+  const localTime = date.getTime() - date.getTimezoneOffset() * 60_000;
+  return new Date(localTime).toISOString().slice(0, 10);
+}
+
 export function IpamWorkspace({ accessToken, canWrite }: { accessToken: string; canWrite: boolean }) {
   const confirmAction = useConfirm();
   const toast = useToast();
   const ipamQuery = useApiQuery(async () => {
-    const [summary, subnets, conflicts, dhcpLeases, reservations] = await Promise.all([
+    const [summary, subnets, conflicts, dhcpLeases, reservations, settings] = await Promise.all([
       api.getIpamSummary(accessToken),
       api.listSubnets(accessToken),
       api.getIpamConflicts(accessToken),
       api.listDhcpLeases(accessToken),
       api.listReservations(accessToken),
+      api.adminPublicSettings(),
     ]);
-    return { summary, subnets, conflicts, dhcpLeases, reservations };
+    return { summary, subnets, conflicts, dhcpLeases, reservations, settings };
   }, [accessToken]);
   const summary = ipamQuery.data?.summary ?? null;
   const subnets = useMemo(() => ipamQuery.data?.subnets ?? [], [ipamQuery.data]);
@@ -52,6 +60,8 @@ export function IpamWorkspace({ accessToken, canWrite }: { accessToken: string; 
   const reservations = ipamQuery.data?.reservations ?? [];
   const loading = ipamQuery.isLoading;
   const error = ipamQuery.error;
+  const defaultReservationExpiryEnabled = ipamQuery.data?.settings.ip_reservation_default_expiry_enabled ?? true;
+  const initialReservationExpiry = () => defaultReservationExpiryEnabled ? defaultReservationExpiryDate() : "";
 
   const [selectedSubnet, setSelectedSubnet] = useState<IpamSubnet | null>(null);
 
@@ -75,7 +85,7 @@ export function IpamWorkspace({ accessToken, canWrite }: { accessToken: string; 
   const [reserveLabel, setReserveLabel] = useState("");
   const [reserveMac, setReserveMac] = useState("");
   const [reserveNotes, setReserveNotes] = useState("");
-  const [reserveExpires, setReserveExpires] = useState(""); // YYYY-MM-DD, blank = never
+  const [reserveExpires, setReserveExpires] = useState(""); // YYYY-MM-DD
   const [reserveBusy, setReserveBusy] = useState(false);
   const [reserveError, setReserveError] = useState<string | null>(null);
   const [nextFreeBusySubnetId, setNextFreeBusySubnetId] = useState<number | null>(null);
@@ -212,7 +222,7 @@ export function IpamWorkspace({ accessToken, canWrite }: { accessToken: string; 
     setReserveLabel("");
     setReserveMac("");
     setReserveNotes("");
-    setReserveExpires("");
+    setReserveExpires(initialReservationExpiry());
     setReserveError(null);
   }
 
@@ -223,7 +233,7 @@ export function IpamWorkspace({ accessToken, canWrite }: { accessToken: string; 
     setReserveLabel("");
     setReserveMac("");
     setReserveNotes("");
-    setReserveExpires("");
+    setReserveExpires(initialReservationExpiry());
     setReserveError(null);
   }
 
@@ -236,7 +246,7 @@ export function IpamWorkspace({ accessToken, canWrite }: { accessToken: string; 
     setReserveLabel("");
     setReserveMac("");
     setReserveNotes("");
-    setReserveExpires("");
+    setReserveExpires(initialReservationExpiry());
     setReserveError(null);
     try {
       const { ip } = await api.getNextAvailableIp(accessToken, subnet.id);
@@ -283,13 +293,14 @@ export function IpamWorkspace({ accessToken, canWrite }: { accessToken: string; 
       } else {
         const ips = parseReserveIpInput(reserveIp);
         if (typeof ips === "string") { setReserveError(ips); setReserveBusy(false); return; }
+        const expiresAt = reserveExpires ? `${reserveExpires}T23:59:59Z` : null;
         for (const ip of ips) {
           await api.createReservation(accessToken, {
             ip_address: ip, label: reserveLabel.trim(),
             mac_address: ips.length === 1 ? (reserveMac.trim() || null) : null,
             notes: reserveNotes.trim() || null,
             subnet_id: selectedSubnet?.id ?? null,
-            expires_at: reserveExpires ? `${reserveExpires}T23:59:59Z` : null,
+            expires_at: expiresAt,
           });
         }
       }
@@ -978,7 +989,7 @@ export function IpamWorkspace({ accessToken, canWrite }: { accessToken: string; 
                 value={reserveExpires}
                 onChange={(e) => setReserveExpires(e.target.value)}
               />
-              <span className="dash-panel-meta">Leave blank to keep the reservation until removed.</span>
+              <span className="dash-panel-meta">New reservations default to 90 days from today.</span>
             </label>
             {reserveError && <p className="nm-alert nm-alert--error">{reserveError}</p>}
           </form>

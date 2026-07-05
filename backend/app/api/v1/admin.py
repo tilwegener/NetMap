@@ -68,6 +68,7 @@ DEFAULTS: dict[str, str] = {
     "monitor_interval_seconds": "300",
     "idle_timeout_minutes": "15",
     "active_network_public_targets_enabled": str(settings.active_network_public_targets_enabled).lower(),
+    "ip_reservation_default_expiry_enabled": "true",
 }
 
 BUILT_IN_DEVICE_TYPES: tuple[DeviceTypeRead, ...] = (

@@ -15,8 +15,9 @@ class SystemSettingsRead(BaseModel):
     monitor_interval_seconds: int = 300
     idle_timeout_minutes: int = 15
     active_network_public_targets_enabled: bool = False
+    ip_reservation_default_expiry_enabled: bool = True
 
-    @field_validator("live_ping_enabled", "active_network_public_targets_enabled", mode="before")
+    @field_validator("live_ping_enabled", "active_network_public_targets_enabled", "ip_reservation_default_expiry_enabled", mode="before")
     @classmethod
     def _coerce_bool(cls, v: object) -> bool:
         if isinstance(v, bool):
@@ -41,6 +42,7 @@ class SystemSettingsUpdate(BaseModel):
     monitor_interval_seconds: int | None = Field(None, ge=30, le=3600)
     idle_timeout_minutes: int | None = Field(None, ge=1, le=480)
     active_network_public_targets_enabled: bool | None = None
+    ip_reservation_default_expiry_enabled: bool | None = None
 
 
 class NotificationSettings(BaseModel):
