@@ -156,7 +156,17 @@ export function UsersTab({
                     )}
                   </div>
                   <div className="admin-user-info">
-                    <span className="admin-user-name">{row.username}</span>
+                    <span className="admin-user-name">
+                      {row.username}
+                      {row.auth_source === "oidc" && (
+                        <span
+                          className="nm-pill nm-pill--sso"
+                          title={`Signs in with single sign-on${row.sso_issuer ? ` — ${row.sso_issuer}` : ""}${row.sso_last_login_at ? ` (last SSO login ${new Date(row.sso_last_login_at).toLocaleString()})` : ""}`}
+                        >
+                          SSO
+                        </span>
+                      )}
+                    </span>
                     {editingEmailId === row.id ? (
                       <div className="admin-email-edit-row">
                         <input

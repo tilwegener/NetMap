@@ -8,6 +8,62 @@ export type User = {
   display_name: string | null;
   avatar_data: string | null;
   email: string | null;
+  auth_source?: "local" | "oidc";
+  sso_issuer?: string | null;
+  sso_last_login_at?: string | null;
+};
+
+export type OidcStatus = {
+  enabled: boolean;
+  provider_name: string;
+  require_sso: boolean;
+};
+
+export type OidcSettings = {
+  enabled: boolean;
+  issuer: string;
+  client_id: string;
+  client_secret_set: boolean;
+  redirect_url: string;
+  effective_redirect_url: string;
+  scopes: string;
+  allowed_email_domains: string;
+  auto_provision: boolean;
+  provider_name: string;
+  link_by_email: boolean;
+  allow_unverified_email: boolean;
+  group_claim: string;
+  role_mappings: string;
+  manage_roles: boolean;
+  default_role: string;
+  allow_super_admin: boolean;
+  require_sso: boolean;
+  env_configured: boolean;
+};
+
+export type OidcSettingsUpdate = Partial<{
+  enabled: boolean;
+  issuer: string;
+  client_id: string;
+  client_secret: string;
+  redirect_url: string;
+  scopes: string;
+  allowed_email_domains: string;
+  auto_provision: boolean;
+  provider_name: string;
+  link_by_email: boolean;
+  allow_unverified_email: boolean;
+  group_claim: string;
+  role_mappings: string;
+  manage_roles: boolean;
+  default_role: string;
+  allow_super_admin: boolean;
+  require_sso: boolean;
+}>;
+
+export type OidcTestResult = {
+  ok: boolean;
+  checks: { name: string; ok: boolean; message: string }[];
 };
 
 export type TokenPair = {
@@ -1073,6 +1129,20 @@ export const api = {
     request<void>("/api/v1/auth/logout", {
       method: "POST",
       token: token ?? null,
+      body: JSON.stringify({}),
+    }),
+  oidcStatus: () => request<OidcStatus>("/api/v1/auth/oidc/status"),
+  getOidcSettings: (token: string) => request<OidcSettings>("/api/v1/admin/oidc-settings", { token }),
+  updateOidcSettings: (token: string, payload: OidcSettingsUpdate) =>
+    request<OidcSettings>("/api/v1/admin/oidc-settings", {
+      method: "PUT",
+      token,
+      body: JSON.stringify(payload),
+    }),
+  testOidcProvider: (token: string) =>
+    request<OidcTestResult>("/api/v1/admin/oidc-settings/test", {
+      method: "POST",
+      token,
       body: JSON.stringify({}),
     }),
   me: (token: string) => request<User>("/api/v1/auth/me", { token }),

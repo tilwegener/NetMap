@@ -1,7 +1,287 @@
-import { useState } from "react";
-import { Shield } from "lucide-react";
-import { api, type User } from "../../../api/client";
+import { useEffect, useState, type FormEvent } from "react";
+import { KeyRound, Shield } from "lucide-react";
+import { api, type OidcSettings, type OidcTestResult, type User } from "../../../api/client";
 import { useApiQuery } from "../../../hooks/useApiQuery";
+import { useToast } from "../../../components/Toast";
+import { useConfirm } from "../../../components/ConfirmDialog";
+
+type SsoFormState = {
+  enabled: boolean;
+  provider_name: string;
+  issuer: string;
+  client_id: string;
+  redirect_url: string;
+  scopes: string;
+  allowed_email_domains: string;
+  auto_provision: boolean;
+  link_by_email: boolean;
+  allow_unverified_email: boolean;
+  group_claim: string;
+  role_mappings: string;
+  manage_roles: boolean;
+  default_role: string;
+  allow_super_admin: boolean;
+};
+
+function formStateFrom(settings: OidcSettings): SsoFormState {
+  return {
+    enabled: settings.enabled,
+    provider_name: settings.provider_name,
+    issuer: settings.issuer,
+    client_id: settings.client_id,
+    redirect_url: settings.redirect_url,
+    scopes: settings.scopes,
+    allowed_email_domains: settings.allowed_email_domains,
+    auto_provision: settings.auto_provision,
+    link_by_email: settings.link_by_email,
+    allow_unverified_email: settings.allow_unverified_email,
+    group_claim: settings.group_claim,
+    role_mappings: settings.role_mappings,
+    manage_roles: settings.manage_roles,
+    default_role: settings.default_role,
+    allow_super_admin: settings.allow_super_admin,
+  };
+}
+
+function SsoSettingsPanel({ accessToken }: { accessToken: string }) {
+  const toast = useToast();
+  const confirmAction = useConfirm();
+  const settingsQuery = useApiQuery(() => api.getOidcSettings(accessToken), [accessToken]);
+
+  const [form, setForm] = useState<SsoFormState | null>(null);
+  const [clientSecret, setClientSecret] = useState("");
+  const [secretDirty, setSecretDirty] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<OidcTestResult | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (settingsQuery.data && form === null) {
+      setForm(formStateFrom(settingsQuery.data));
+    }
+  }, [settingsQuery.data, form]);
+
+  const settings = settingsQuery.data;
+
+  function update<K extends keyof SsoFormState>(key: K, value: SsoFormState[K]) {
+    setForm((current) => (current ? { ...current, [key]: value } : current));
+  }
+
+  async function save(event: FormEvent) {
+    event.preventDefault();
+    if (!form) return;
+    setSaving(true);
+    setFormError(null);
+    try {
+      const payload = secretDirty ? { ...form, client_secret: clientSecret } : { ...form };
+      const updated = await api.updateOidcSettings(accessToken, payload);
+      settingsQuery.setData(updated);
+      setForm(formStateFrom(updated));
+      setClientSecret("");
+      setSecretDirty(false);
+      setTestResult(null);
+      toast.success("Single sign-on settings saved");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unable to save SSO settings";
+      setFormError(message);
+      toast.error(message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function runProviderTest() {
+    setTesting(true);
+    setFormError(null);
+    try {
+      setTestResult(await api.testOidcProvider(accessToken));
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : "Provider test failed");
+    } finally {
+      setTesting(false);
+    }
+  }
+
+  async function toggleRequireSso(next: boolean) {
+    if (!settings) return;
+    if (next) {
+      const confirmed = await confirmAction({
+        title: "Require single sign-on?",
+        message: "Local password sign-in will be disabled for everyone except SuperAdmins.",
+        detail:
+          "SuperAdmin local sign-in stays available as the emergency recovery path. NetMap verifies the provider configuration before enabling this, and you can turn it off again at any time. Save any pending settings changes first — this check runs against the stored configuration.",
+        confirmLabel: "Require SSO",
+        danger: true,
+      });
+      if (!confirmed) return;
+    }
+    setFormError(null);
+    try {
+      const updated = await api.updateOidcSettings(accessToken, { require_sso: next });
+      settingsQuery.setData(updated);
+      toast.success(next ? "SSO is now required for sign-in" : "Local sign-in re-enabled for all users");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unable to change SSO requirement";
+      setFormError(message);
+      toast.error(message);
+    }
+  }
+
+  return (
+    <section className="panel admin-panel">
+      <div className="admin-panel-header">
+        <h2 className="admin-section-title"><KeyRound size={16} />Single Sign-On (OIDC)</h2>
+        <div className="admin-panel-actions">
+          <button type="button" className="nm-btn" disabled={testing || !settings} onClick={() => void runProviderTest()}>
+            {testing ? "Testing…" : "Test provider"}
+          </button>
+        </div>
+      </div>
+      {settingsQuery.error && <div className="form-error">{settingsQuery.error}</div>}
+      {settings?.env_configured && (
+        <p className="auth-field-hint">
+          Some values are provided by environment variables; settings saved here override them.
+        </p>
+      )}
+      {testResult && (
+        <div className="sso-check-list">
+          {testResult.checks.map((check) => (
+            <div key={check.name} className={`sso-check-row ${check.ok ? "ok" : "err"}`}>
+              <span className="sso-check-status">{check.ok ? "✓" : "✕"}</span>
+              <span className="sso-check-name">{check.name.replace(/_/g, " ")}</span>
+              <span className="sso-check-message">{check.message}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {form && settings && (
+        <form className="tool-form" onSubmit={(e) => void save(e)}>
+          <label className="tool-form-inline-check">
+            <input type="checkbox" checked={form.enabled} onChange={(e) => update("enabled", e.target.checked)} />
+            <span className="tool-form-check-copy">
+              <span>Enable "Continue with SSO" on the login screen</span>
+              <span className="tool-note">Shows the SSO button on login while keeping local sign-in available unless SSO is required.</span>
+            </span>
+          </label>
+          <div className="tool-form-grid">
+            <label>Provider name (login button label)
+              <input maxLength={60} placeholder="SSO" value={form.provider_name} onChange={(e) => update("provider_name", e.target.value)} />
+            </label>
+            <label>Issuer URL
+              <input maxLength={512} placeholder="https://auth.example.com/realms/main" value={form.issuer} onChange={(e) => update("issuer", e.target.value)} />
+            </label>
+          </div>
+          <div className="tool-form-grid">
+            <label>Client ID
+              <input maxLength={255} value={form.client_id} onChange={(e) => update("client_id", e.target.value)} />
+            </label>
+            <label>Client secret {settings.client_secret_set && !secretDirty ? "(stored — leave blank to keep)" : "(optional with PKCE)"}
+              <input
+                type="password"
+                maxLength={512}
+                autoComplete="new-password"
+                placeholder={settings.client_secret_set ? "••••••••••••" : "Leave empty for a public client"}
+                value={clientSecret}
+                onChange={(e) => { setClientSecret(e.target.value); setSecretDirty(true); }}
+              />
+            </label>
+          </div>
+          <div className="tool-form-grid">
+            <label>Redirect URL
+              <input maxLength={512} placeholder={settings.effective_redirect_url || "Set APP_URL or enter the callback URL"} value={form.redirect_url} onChange={(e) => update("redirect_url", e.target.value)} />
+            </label>
+            <label>Scopes
+              <input maxLength={255} placeholder="openid profile email" value={form.scopes} onChange={(e) => update("scopes", e.target.value)} />
+            </label>
+          </div>
+          <span className="auth-field-hint">
+            Register this redirect URL with the provider: {settings.effective_redirect_url || "(configure APP_URL or a redirect URL above)"}
+          </span>
+          <div className="tool-form-grid">
+            <label>Allowed email domains (comma-separated, empty = any)
+              <input maxLength={1024} placeholder="example.com, corp.example" value={form.allowed_email_domains} onChange={(e) => update("allowed_email_domains", e.target.value)} />
+            </label>
+            <label>Default role for new SSO users
+              <select value={form.default_role} onChange={(e) => update("default_role", e.target.value)}>
+                <option value="Viewer">Viewer</option>
+                <option value="SecurityAnalyst">SecurityAnalyst</option>
+                <option value="NetworkAdmin">NetworkAdmin</option>
+              </select>
+            </label>
+          </div>
+          <label className="tool-form-inline-check">
+            <input type="checkbox" checked={form.auto_provision} onChange={(e) => update("auto_provision", e.target.checked)} />
+            <span className="tool-form-check-copy">
+              <span>Auto-provision new users on first SSO sign-in</span>
+              <span className="tool-note">Creates a NetMap user automatically after the provider identity passes validation.</span>
+            </span>
+          </label>
+          <label className="tool-form-inline-check">
+            <input type="checkbox" checked={form.link_by_email} onChange={(e) => update("link_by_email", e.target.checked)} />
+            <span className="tool-form-check-copy">
+              <span>Link first-time SSO sign-ins to existing users by verified email</span>
+              <span className="tool-note">Allows an SSO identity to attach to an existing local account when the email is verified.</span>
+            </span>
+          </label>
+          <label className="tool-form-inline-check">
+            <input type="checkbox" checked={form.allow_unverified_email} onChange={(e) => update("allow_unverified_email", e.target.checked)} />
+            <span className="tool-form-check-copy">
+              <span>Accept unverified email addresses</span>
+              <span className="tool-note">Only enable this for providers that do not send a verified email claim, such as some Microsoft Entra ID setups.</span>
+            </span>
+          </label>
+          <div className="tool-form-grid">
+            <label>Group claim name
+              <input maxLength={120} placeholder="groups" value={form.group_claim} onChange={(e) => update("group_claim", e.target.value)} />
+            </label>
+            <label>{'Group → role mappings (JSON object)'}
+              <input maxLength={4096} placeholder={'{"netmap-admins": "NetworkAdmin"}'} value={form.role_mappings} onChange={(e) => update("role_mappings", e.target.value)} />
+            </label>
+          </div>
+          <label className="tool-form-inline-check">
+            <input type="checkbox" checked={form.manage_roles} onChange={(e) => update("manage_roles", e.target.checked)} />
+            <span className="tool-form-check-copy">
+              <span>Provider-managed roles</span>
+              <span className="tool-note">Re-applies mapped roles on every SSO sign-in. Leave off when local role assignments should win.</span>
+            </span>
+          </label>
+          <label className="tool-form-inline-check">
+            <input type="checkbox" checked={form.allow_super_admin} onChange={(e) => update("allow_super_admin", e.target.checked)} />
+            <span className="tool-form-check-copy">
+              <span>Allow role mappings to grant SuperAdmin</span>
+              <span className="tool-note">Keep off unless the identity provider group mapping is tightly controlled and audited.</span>
+            </span>
+          </label>
+          {formError && <div className="form-error">{formError}</div>}
+          <button type="submit" className="nm-btn nm-btn--primary" disabled={saving}>
+            {saving ? "Saving…" : "Save SSO settings"}
+          </button>
+        </form>
+      )}
+      {settings && (
+        <div className="sso-require-block">
+          <label className="tool-form-inline-check">
+            <input
+              type="checkbox"
+              checked={settings.require_sso}
+              onChange={(e) => void toggleRequireSso(e.target.checked)}
+            />
+            <span className="tool-form-check-copy">
+              <span>Require SSO for sign-in</span>
+              <span className="tool-note">SuperAdmins keep local sign-in as an emergency recovery path.</span>
+            </span>
+          </label>
+          {settings.require_sso && (
+            <span className="auth-field-hint">
+              Local password sign-in is currently disabled for non-SuperAdmin users. Disable this toggle to roll back.
+            </span>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
 
 export function SecurityTab({
   accessToken,
@@ -26,7 +306,8 @@ export function SecurityTab({
 
   return (
     <div className="admin-tab-content">
-      <section className="panel admin-panel">
+      <SsoSettingsPanel accessToken={accessToken} />
+      <section className="panel admin-panel admin-security-audit-panel">
         <div className="admin-panel-header">
           <h2 className="admin-section-title"><Shield size={16} />{auditUserFilter ? `Activity — ${users.find((u) => u.id === auditUserFilter)?.username ?? "user"}` : "Login & Audit History"}</h2>
           <div className="admin-panel-actions">

@@ -69,6 +69,9 @@ export async function setupCoreMocks(page: Page) {
   await page.route("**/api/v1/auth/setup-required", (route) =>
     route.fulfill({ json: { needs_setup: false } })
   );
+  await page.route("**/api/v1/auth/oidc/status", (route) =>
+    route.fulfill({ json: { enabled: false, provider_name: "SSO", require_sso: false } })
+  );
   await page.route("**/api/v1/auth/refresh", (route) =>
     route.fulfill({ json: mockTokenPair })
   );
