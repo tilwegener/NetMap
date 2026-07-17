@@ -67,4 +67,8 @@ services:
       - ALL
     cap_add:
       - NET_RAW
+      - CHOWN
+      - SETUID
+      - SETGID
+      - NET_RAW
     restart: unless-stopped
