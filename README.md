@@ -160,6 +160,10 @@ services:
       - "5514:1514/tcp"
     cap_add:
       - NET_RAW
+      - CHOWN
+      - SETUID
+      - SETGID
+      - NET_RAW
     restart: unless-stopped
 ```
 
@@ -269,6 +273,10 @@ services:
       - ALL
     cap_add:
       - NET_RAW            # Required for ICMP ping and traceroute
+      - CHOWN
+      - SETUID
+      - SETGID
+      - NET_RAW
     security_opt:
       - no-new-privileges:true
 
